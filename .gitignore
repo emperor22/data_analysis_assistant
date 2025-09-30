@@ -55,3 +55,4 @@ docs/_build/
 *.sqlite
 *.db
 .env
+*.code-workspace

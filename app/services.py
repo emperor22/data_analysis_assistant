@@ -76,18 +76,20 @@ class CsvReader(FileReader):
         self.df = pd.read_csv(io.BytesIO(self.file_content))
         
 class DatasetProcessorForPrompt:
-    def __init__(self, dataframe: pd.DataFrame, filename: str, prompt_template_file: str):
+    def __init__(self, dataframe: pd.DataFrame, filename: str, prompt_template_file: str, task_count: int):
         self.dataframe = dataframe
         self.filename = filename
         self.prompt_template_file = prompt_template_file
+        self.task_count = task_count
         
     def create_prompt(self) -> str:
         with open(self.prompt_template_file, 'r') as f:
             template = Template(f.read())
         
-        context = {'dataset_name': self.filename, 
-                'dataset_snippet': self._get_dataset_snippet(), 
-                'dataset_column_unique_values': self._get_column_unique_values()}
+        context = {'task_count': self.task_count,
+                   'dataset_name': self.filename, 
+                   'dataset_snippet': self._get_dataset_snippet(), 
+                   'dataset_column_unique_values': self._get_column_unique_values()}
         return template.substitute(context)
     
     def _get_dataset_snippet(self) -> str:
@@ -457,9 +459,13 @@ def get_prompt_result(prompt, model):
 
 def process_llm_api_response(resp: dict):
     prompt_resp = resp['candidates'][0]['content']['parts'][0]['text']
+    clean_json = re.search(r"```json\s*(.*?)\s*```", prompt_resp, re.DOTALL)
+    clean_json = clean_json.group(1).strip()
+    data = json.loads(clean_json)
+    
     # prompt_token_count = resp['usage_metadata']['promptTokenCount']
     # total_token_count = resp['usage_metadata']['totalTokenCount']
     
-    return prompt_resp
+    return data
 
 

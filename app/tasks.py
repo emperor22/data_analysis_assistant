@@ -31,12 +31,13 @@ def get_prompt_result_task(self, model, prompt, request_id, dataset_cols):
     # catch requestlimit error and throttle for 60 seconds
     # llm api request limit reset at midnight pacific time
     
-    # resp = get_prompt_result(prompt, model)     
-    # result = process_llm_api_response(resp)
-    
+    resp = get_prompt_result(prompt, model)     
+    result = process_llm_api_response(resp)
+    with open('resp.json', 'w') as f:
+        f.write(json.dumps(result, indent=4))
     # mocking api call
-    with open('resp2.json', 'r') as f:
-        result = json.load(f)
+    # with open('resp2.json', 'r') as f:
+    #     result = json.load(f)
         
     DatasetAnalysisModel.model_validate(result, context={'required_cols': dataset_cols})
 

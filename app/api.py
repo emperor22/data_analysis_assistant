@@ -7,7 +7,7 @@ from app.services import CsvReader, DatasetProcessorForPrompt
 from app.tasks import get_prompt_result_task, data_processing_task
 from app.crud import PromptTableOperation, UserTableOperation, TaskRunTableOperation, DATABASE_URL_SYNC, get_conn
 from app.auth import create_access_token, get_current_user, get_hashed_password, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES
-from app.schemas import UserRegisterModel, ChangePasswordModel, DataTasks
+from app.schemas import UserRegisterModel, ChangePasswordModel, DataTasks, TASK_COUNT_LLM_RESP
 
 from celery import chain
 
@@ -22,50 +22,51 @@ app = FastAPI()
 async def read_root():
     return {'Hello': 'World'}
 
+# to do:
+# check last user request time from prompt_and_result db and put it in pending if still within time limit
+
 @app.post('/upload_dataset')
 async def upload(file: UploadFile, conn=Depends(get_conn), current_user=Depends(get_current_user)):
-    # to do:
-    # check last user request time from prompt_and_result db and put it in pending if still within time limit
-    
-    # try:
-    
-    user_id = current_user.user_id
-    prompt_version = 3
-    model = 'gemma-3-27b-it'  
-    
-    
-    file_reader = CsvReader(file)
-    file_data = await run_in_threadpool(file_reader.get_dataframe_dict)
-    dataset_dataframe = file_data['dataframe']
-    dataset_filename = file_data['filename']
-    dataset_columns_str = file_data['columns_str']
-    
-    data_processor = DatasetProcessorForPrompt(dataset_dataframe, dataset_filename, f'app/prompts/prompt{prompt_version}.md')
-    final_prompt = await run_in_threadpool(data_processor.create_prompt)
-    
-    with open('final_prompt.txt', 'w') as f:
-        f.write(final_prompt)
-    
-    # these values needs to be obtained from user config
-      
-    
-    prompt_table_ops = PromptTableOperation(conn=conn)
-    req_id = await prompt_table_ops.add_task(user_id=user_id, prompt_version=prompt_version, filename=dataset_filename, 
-                                             dataset_cols=dataset_columns_str, model=model)
-    
-    parquet_file = f'app/datasets/{req_id}.parquet'
-    dataset_dataframe.to_parquet(parquet_file, index=False)
-    
-    run_info = {'request_id': req_id, 'user_id': user_id, 'parquet_file': parquet_file}
-    
-    _ = chain(get_prompt_result_task.s(model, final_prompt, req_id, literal_eval(dataset_columns_str)), # accepts prompt, req_id, cols list, db_url # type: ignore
-              data_processing_task.s(run_info, False, True) # accepts data_tasks (from prev task), run_info dct, db_url, common_tasks_only, first_run
-              ).apply_async()
-    
-    return {'detail': 'request task executed'}
+    try:
+        # these values needs to be obtained from user config
+        user_id = current_user.user_id
+        prompt_version = 3
+        model = 'gemini-2.5-flash'  
+        
+        
+        file_reader = CsvReader(file)
+        file_data = await run_in_threadpool(file_reader.get_dataframe_dict)
+        dataset_dataframe = file_data['dataframe']
+        dataset_filename = file_data['filename']
+        dataset_columns_str = file_data['columns_str']
+        
+        data_processor = DatasetProcessorForPrompt(dataframe=dataset_dataframe, 
+                                                filename=dataset_filename, 
+                                                prompt_template_file=f'app/prompts/prompt{prompt_version}.md', 
+                                                task_count=TASK_COUNT_LLM_RESP)
+        
+        final_prompt = await run_in_threadpool(data_processor.create_prompt)
+        
+        with open('final_prompt.txt', 'w') as f:
+            f.write(final_prompt)
+        
+        prompt_table_ops = PromptTableOperation(conn=conn)
+        req_id = await prompt_table_ops.add_task(user_id=user_id, prompt_version=prompt_version, filename=dataset_filename, 
+                                                dataset_cols=dataset_columns_str, model=model)
+        
+        parquet_file = f'app/datasets/{req_id}.parquet'
+        dataset_dataframe.to_parquet(parquet_file, index=False)
+        
+        run_info = {'request_id': req_id, 'user_id': user_id, 'parquet_file': parquet_file}
+        
+        _ = chain(get_prompt_result_task.s(model, final_prompt, req_id, literal_eval(dataset_columns_str)), # accepts prompt, req_id, cols list, db_url
+                data_processing_task.s(run_info, False, True) # accepts data_tasks (from prev task), run_info dct, db_url, common_tasks_only, first_run
+                ).apply_async()
+        
+        return {'detail': 'request task executed'}
             
-    # except Exception as e:
-    #     return {'detail': e.args}
+    except Exception as e:
+        return {'detail': e.args}
     
 @app.post('/execute_analyses')
 async def execute_analyses(data_tasks: DataTasks, req_id: int, current_user=Depends(get_current_user), 
@@ -78,9 +79,6 @@ async def execute_analyses(data_tasks: DataTasks, req_id: int, current_user=Depe
     data_processing_task.delay(data_tasks, run_info, True, False) # accepts data_tasks, run_info dct, db_url, common_tasks_only, first_run
     
     return {'detail': 'analysis task executed'}
-    
-    
-    
 
 ################### USER ROUTES ###################
 

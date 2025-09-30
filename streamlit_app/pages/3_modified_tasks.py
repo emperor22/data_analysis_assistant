@@ -59,7 +59,7 @@ PARAMS_MAP = {
     'groupby': {
         'columns_to_group_by': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
         'columns_to_aggregate': {'alias': 'Column(s) to aggregate', 'type': 'multiselect'},
-        'calculation': {'alias': 'Calculation', 'type': 'multiselect', 'options': ['mean', 'median', 'min', 'max', 'count', 'size']}
+        'calculation': {'alias': 'Calculation', 'type': 'multiselect', 'options': ['mean', 'median', 'min', 'max', 'count', 'size', 'sum']}
     },
     'filter': {
         'column_name': {'alias': 'Filter column', 'type': 'selectbox'},
@@ -78,7 +78,7 @@ PARAMS_MAP = {
     },
     'get_columns_statistics': {
         'column_name': {'alias': 'Column to get statistics from', 'type': 'selectbox'},
-        'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['mean', 'median', 'min', 'max', 'count']}
+        'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['mean', 'median', 'min', 'max', 'count', 'sum']}
     },
 }
 

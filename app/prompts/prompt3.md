@@ -20,7 +20,7 @@ Instructions
 1.  Analyze and Infer: Infer the dataset's domain and write a concise description. For each column, determine its meaning, and apply a classification from the list above.
 2.  Generate `common_column_combination`: Identify pairs of columns that can be combined to create a new, meaningful metric.
 3.  Generate `common_column_cleaning_or_transformation`: Identify 3-5 opportunities to derive new, more useful columns or transform existing data. Use only the classified columns (e.g., Metrics for math_op, Temporal for date_op). Output as a list of JSON objects, each with "name", "description", and "operation" (a typed object for the transformation type).
-4.  Generate common_tasks: Generate 10 high-relevance analysis tasks. For the steps, use only the columns defined in the columns, common_column_combination, and common_column_cleaning_or_transformation sections. Use only the provided functions to define the steps. Base your analysis on Identifier, Dimensional, and Metric columns. Avoid using PII or System/Metadata columns.
+4.  Generate common_tasks: Generate $task_count high-relevance analysis tasks. For the steps, use only the columns defined in the columns, common_column_combination, and common_column_cleaning_or_transformation sections. Use only the provided functions and their specific parameters (and their allowable values) to define the steps. Base your analysis on Identifier, Dimensional, and Metric columns. Avoid using PII or System/Metadata columns.
 5.  Strict Output Format: Output a single, complete JSON object. Ensure all fields strictly follow the structure and examples provided.
 
 -----
