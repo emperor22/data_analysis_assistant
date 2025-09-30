@@ -1,0 +1,533 @@
+{
+  "domain": "Lending and Credit Risk",
+  "description": "Dataset containing loan application and performance data, including loan characteristics, borrower information, and repayment status for risk assessment and default prediction.",
+  "columns": [
+    {
+      "name": "id",
+      "classification": "Identifier",
+      "confidence_score": 1.0,
+      "data_type": "integer",
+      "type": "Numerical",
+      "unit": "",
+      "expected_values": []
+    },
+    {
+      "name": "loan_amnt",
+      "classification": "Metric",
+      "confidence_score": 0.95,
+      "data_type": "integer",
+      "type": "Numerical",
+      "unit": "",
+      "expected_values": [5000, 15000]
+    },
+    {
+      "name": "term",
+      "classification": "Dimensional",
+      "confidence_score": 0.9,
+      "data_type": "integer",
+      "type": "Categorical",
+      "unit": "",
+      "expected_values": [36, 60]
+    },
+    {
+      "name": "int_rate",
+      "classification": "Metric",
+      "confidence_score": 0.95,
+      "data_type": "float",
+      "type": "Numerical",
+      "unit": "%",
+      "expected_values": [7.0, 20.0]
+    },
+    {
+      "name": "installment",
+      "classification": "Metric",
+      "confidence_score": 0.9,
+      "data_type": "float",
+      "type": "Numerical",
+      "unit": "",
+      "expected_values": [50.0, 500.0]
+    },
+    {
+      "name": "home_ownership",
+      "classification": "Dimensional",
+      "confidence_score": 0.95,
+      "data_type": "string",
+      "type": "Categorical",
+      "unit": "",
+      "expected_values": ["rent", "mortgage", "own", "other"]
+    },
+    {
+      "name": "annual_inc",
+      "classification": "Metric",
+      "confidence_score": 0.9,
+      "data_type": "float",
+      "type": "Numerical",
+      "unit": "",
+      "expected_values": [30000.0, 80000.0]
+    },
+    {
+      "name": "verification_status",
+      "classification": "Dimensional",
+      "confidence_score": 0.95,
+      "data_type": "string",
+      "type": "Categorical",
+      "unit": "",
+      "expected_values": ["not verified", "verified", "source verified"]
+    },
+    {
+      "name": "issue_d",
+      "classification": "Temporal",
+      "confidence_score": 0.8,
+      "data_type": "integer",
+      "type": "Categorical",
+      "unit": "",
+      "expected_values": [-11, -10, -9, -8, -7]
+    },
+    {
+      "name": "loan_status",
+      "classification": "Dimensional",
+      "confidence_score": 0.95,
+      "data_type": "string",
+      "type": "Categorical",
+      "unit": "",
+      "expected_values": ["fully paid", "charged off", "current"]
+    },
+    {
+      "name": "purpose",
+      "classification": "Dimensional",
+      "confidence_score": 0.95,
+      "data_type": "string",
+      "type": "Categorical",
+      "unit": "",
+      "expected_values": ["debt_consolidation", "credit_card", "other", "home_improvement", "major_purchase"]
+    },
+    {
+      "name": "total_pymnt",
+      "classification": "Metric",
+      "confidence_score": 0.9,
+      "data_type": "float",
+      "type": "Numerical",
+      "unit": "",
+      "expected_values": [0.0, 12000.0]
+    }
+  ],
+  "common_column_combination": [
+    {
+      "name": "debt_to_income_ratio",
+      "formula": "loan_amnt / annual_inc"
+    },
+    {
+      "name": "interest_to_principal_ratio",
+      "formula": "total_pymnt / loan_amnt"
+    },
+    {
+      "name": "monthly_income",
+      "formula": "annual_inc / 12"
+    },
+    {
+      "name": "installment_to_income_ratio",
+      "formula": "installment / (annual_inc / 12)"
+    }
+  ],
+  "common_column_cleaning_or_transformation": [
+    {
+      "name": "loan_size_category",
+      "description": "Categorize loans by amount into small, medium, and large",
+      "formula": "MAP_RANGE(loan_amnt, [{'0-5000': 'Small'}, {'5001-15000': 'Medium'}, {'15001-inf': 'Large'}])"
+    },
+    {
+      "name": "income_bracket",
+      "description": "Group annual income into brackets for analysis",
+      "formula": "MAP_RANGE(annual_amnt, [{'0-30000': 'Low'}, {'30001-60000': 'Medium'}, {'60001-100000': 'High'}, {'100001-inf': 'Very_High'}])"
+    },
+    {
+      "name": "risk_category",
+      "description": "Categorize loans by interest rate risk level",
+      "formula": "MAP_RANGE(int_rate, [{'0-10': 'Low_Risk'}, {'10.01-15': 'Medium_Risk'}, {'15.01-inf': 'High_Risk'}])"
+    },
+    {
+      "name": "loan_term_category",
+      "description": "Convert numerical term to categorical short/long term",
+      "formula": "MAP(term, {'36': 'Short_Term', '60': 'Long_Term'})"
+    }
+  ],
+  "common_tasks": [
+    {
+      "name": "Analyze default rates by loan purpose",
+      "task_id": 1,
+      "description": "Calculate the percentage of charged off loans for each loan purpose category",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["purpose"],
+          "columns_to_aggregate": ["loan_status"],
+          "calculation": ["count"]
+        },
+        {
+          "function": "get_proportion",
+          "column_name": ["loan_status"],
+          "values": ["charged off"]
+        }
+      ],
+      "score": 0.95
+    },
+    {
+      "name": "Compare average interest rates by home ownership status",
+      "task_id": 2,
+      "description": "Calculate mean interest rates for different home ownership categories",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["home_ownership"],
+          "columns_to_aggregate": ["int_rate"],
+          "calculation": ["mean"]
+        }
+      ],
+      "score": 0.9
+    },
+    {
+      "name": "Identify top 10 highest loan amounts by verified status",
+      "task_id": 3,
+      "description": "Find the largest loans grouped by income verification status",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["verification_status"],
+          "columns_to_aggregate": ["loan_amnt"],
+          "calculation": ["max"]
+        },
+        {
+          "function": "get_top_or_bottom_N_entries",
+          "sort_by_column_name": "loan_amnt",
+          "order": "top",
+          "number_of_entries": 10,
+          "return_columns": ["verification_status", "loan_amnt"]
+        }
+      ],
+      "score": 0.85
+    },
+    {
+      "name": "Analyze loan performance by term length",
+      "task_id": 4,
+      "description": "Compare default rates between 36-month and 60-month loans",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["term", "loan_status"],
+          "columns_to_aggregate": ["id"],
+          "calculation": ["count"]
+        },
+        {
+          "function": "get_proportion",
+          "column_name": ["loan_status"],
+          "values": ["charged off"]
+        }
+      ],
+      "score": 0.92
+    },
+    {
+      "name": "Calculate average annual income by loan purpose",
+      "task_id": 5,
+      "description": "Determine the mean income of borrowers for different loan purposes",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["purpose"],
+          "columns_to_aggregate": ["annual_inc"],
+          "calculation": ["mean"]
+        }
+      ],
+      "score": 0.88
+    },
+    {
+      "name": "Find loans with highest debt-to-income ratio",
+      "task_id": 6,
+      "description": "Identify loans where the loan amount represents a high percentage of annual income",
+      "steps": [
+        {
+          "function": "filter",
+          "column_name": "loan_amnt",
+          "operator": ">",
+          "values": [10000]
+        },
+        {
+          "function": "filter",
+          "column_name": "annual_inc",
+          "operator": "<",
+          "values": [50000]
+        },
+        {
+          "function": "get_top_or_bottom_N_entries",
+          "sort_by_column_name": "debt_to_income_ratio",
+          "order": "top",
+          "number_of_entries": 15,
+          "return_columns": ["id", "loan_amnt", "annual_inc", "debt_to_income_ratio"]
+        }
+      ],
+      "score": 0.87
+    },
+    {
+      "name": "Analyze installment amounts by loan status",
+      "task_id": 7,
+      "description": "Compare monthly payment amounts across different loan outcomes",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["loan_status"],
+          "columns_to_aggregate": ["installment"],
+          "calculation": ["mean", "median"]
+        }
+      ],
+      "score": 0.89
+    },
+    {
+      "name": "Identify most common loan purposes for high-risk borrowers",
+      "task_id": 8,
+      "description": "Find loan purposes with highest interest rates above 15%",
+      "steps": [
+        {
+          "function": "filter",
+          "column_name": "int_rate",
+          "operator": ">",
+          "values": [15]
+        },
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["purpose"],
+          "columns_to_aggregate": ["id"],
+          "calculation": ["count"]
+        },
+        {
+          "function": "get_top_or_bottom_N_entries",
+          "sort_by_column_name": "id",
+          "order": "top",
+          "number_of_entries": 5,
+          "return_columns": ["purpose", "id"]
+        }
+      ],
+      "score": 0.86
+    },
+    {
+      "name": "Compare total payments by verification status",
+      "task_id": 9,
+      "description": "Analyze if verified income leads to better repayment outcomes",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["verification_status"],
+          "columns_to_aggregate": ["total_pymnt"],
+          "calculation": ["mean", "sum"]
+        }
+      ],
+      "score": 0.84
+    },
+    {
+      "name": "Analyze loan size distribution by home ownership",
+      "task_id": 10,
+      "description": "Compare loan amounts across different home ownership categories",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["home_ownership"],
+          "columns_to_aggregate": ["loan_amnt"],
+          "calculation": ["min", "max", "mean", "median"]
+        }
+      ],
+      "score": 0.88
+    },
+    {
+      "name": "Find correlation between interest rates and default rates",
+      "task_id": 11,
+      "description": "Analyze if higher interest rates correlate with higher charge-off rates",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["risk_category"],
+          "columns_to_aggregate": ["loan_status"],
+          "calculation": ["count"]
+        },
+        {
+          "function": "get_proportion",
+          "column_name": ["loan_status"],
+          "values": ["charged off"]
+        }
+      ],
+      "score": 0.91
+    },
+    {
+      "name": "Identify optimal loan size for different income brackets",
+      "task_id": 12,
+      "description": "Find most successful loan amounts by income level",
+      "steps": [
+        {
+          "function": "filter",
+          "column_name": "loan_status",
+          "operator": "in",
+          "values": ["fully paid"]
+        },
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["income_bracket", "loan_size_category"],
+          "columns_to_aggregate": ["id"],
+          "calculation": ["count"]
+        },
+        {
+          "function": "get_top_or_bottom_N_entries",
+          "sort_by_column_name": "id",
+          "order": "top",
+          "number_of_entries": 10,
+          "return_columns": ["income_bracket", "loan_size_category", "id"]
+        }
+      ],
+      "score": 0.87
+    },
+    {
+      "name": "Analyze installment-to-income ratio by loan status",
+      "task_id": 13,
+      "description": "Compare monthly payment burden across different loan outcomes",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["loan_status"],
+          "columns_to_aggregate": ["installment_to_income_ratio"],
+          "calculation": ["mean", "median"]
+        }
+      ],
+      "score": 0.85
+    },
+    {
+      "name": "Compare performance of short vs long term loans",
+      "task_id": 14,
+      "description": "Analyze default rates and total payments by loan term category",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["loan_term_category"],
+          "columns_to_aggregate": ["loan_status", "total_pymnt"],
+          "calculation": ["count", "mean"]
+        },
+        {
+          "function": "get_proportion",
+          "column_name": ["loan_status"],
+          "values": ["charged off"]
+        }
+      ],
+      "score": 0.93
+    },
+    {
+      "name": "Identify most profitable loan purposes",
+      "task_id": 15,
+      "description": "Find which loan purposes generate the highest interest-to-principal ratios",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["purpose"],
+          "columns_to_aggregate": ["interest_to_principal_ratio"],
+          "calculation": ["mean"]
+        },
+        {
+          "function": "get_top_or_bottom_N_entries",
+          "sort_by_column_name": "interest_to_principal_ratio",
+          "order": "top",
+          "number_of_entries": 5,
+          "return_columns": ["purpose", "interest_to_principal_ratio"]
+        }
+      ],
+      "score": 0.86
+    },
+    {
+      "name": "Analyze loan distribution by size categories",
+      "task_id": 16,
+      "description": "Examine how loans are distributed across small, medium, and large categories",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["loan_size_category"],
+          "columns_to_aggregate": ["id"],
+          "calculation": ["count"]
+        },
+        {
+          "function": "get_proportion",
+          "column_name": ["loan_size_category"],
+          "values": []
+        }
+      ],
+      "score": 0.82
+    },
+    {
+      "name": "Compare interest rates by verification status and home ownership",
+      "task_id": 17,
+      "description": "Analyze how interest rates vary across verification and ownership combinations",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["verification_status", "home_ownership"],
+          "columns_to_aggregate": ["int_rate"],
+          "calculation": ["mean"]
+        }
+      ],
+      "score": 0.84
+    },
+    {
+      "name": "Identify high-risk loan characteristics",
+      "task_id": 18,
+      "description": "Find combinations of factors that correlate with charged off loans",
+      "steps": [
+        {
+          "function": "filter",
+          "column_name": "loan_status",
+          "operator": "in",
+          "values": ["charged off"]
+        },
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["home_ownership", "purpose", "risk_category"],
+          "columns_to_aggregate": ["id"],
+          "calculation": ["count"]
+        },
+        {
+          "function": "get_top_or_bottom_N_entries",
+          "sort_by_column_name": "id",
+          "order": "top",
+          "number_of_entries": 10,
+          "return_columns": ["home_ownership", "purpose", "risk_category", "id"]
+        }
+      ],
+      "score": 0.89
+    },
+    {
+      "name": "Analyze income distribution by loan purpose",
+      "task_id": 19,
+      "description": "Examine borrower income characteristics for different loan types",
+      "steps": [
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["purpose"],
+          "columns_to_aggregate": ["annual_inc"],
+          "calculation": ["min", "max", "mean", "median"]
+        }
+      ],
+      "score": 0.83
+    },
+    {
+      "name": "Compare recovery rates on defaulted loans by purpose",
+      "task_id": 20,
+      "description": "Analyze what percentage of principal was recovered for charged off loans by purpose",
+      "steps": [
+        {
+          "function": "filter",
+          "column_name": "loan_status",
+          "operator": "in",
+          "values": ["charged off"]
+        },
+        {
+          "function": "groupby",
+          "columns_to_group_by": ["purpose"],
+          "columns_to_aggregate": ["interest_to_principal_ratio"],
+          "calculation": ["mean"]
+        }
+      ],
+      "score": 0.88
+    }
+  ]
+}
