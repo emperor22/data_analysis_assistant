@@ -35,7 +35,7 @@ class CommonColumnCombinationModel(BaseModel):
 
 class CommonColumnCombinationOperation(BaseModel):
     source_columns: List[str] = Field(min_length=1)  # type: ignore
-    expression: str = Field(pattern=r"^[a-zA-Z0-9_\s\+\-\*/\(\)\.]+$") # type: ignore
+    expression: str = Field(pattern=r'^[a-zA-Z0-9_\s\+\-\*/\(\)\.]+$') # type: ignore
     
     model_config = ConfigDict(extra='forbid')
     
@@ -61,7 +61,7 @@ class CommonColumnCombinationModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
 class MapOperation(BaseModel):
-    type: Literal["map"] = "map"
+    type: Literal['map'] = 'map'
     source_column: str
     mapping: Dict[Union[str, int, float], Union[str, int]]
     
@@ -69,29 +69,29 @@ class MapOperation(BaseModel):
     
 
 class RangeItem(BaseModel):
-    range: str = Field(pattern=r"^\d+(?:\.\d+)?[-\+](\d+|inf)$") # type: ignore
+    range: str = Field(pattern=r'^\d+(?:\.\d+)?[-\+](\d+|inf)$')
     label: str
     
     model_config = ConfigDict(extra='forbid')
 
 class MapRangeOperation(BaseModel):
-    type: Literal["map_range"] = "map_range"
+    type: Literal['map_range'] = 'map_range'
     source_column: str
-    ranges: List[RangeItem] = Field(min_length=1)  # type: ignore
+    ranges: List[RangeItem] = Field(min_length=1)
     
     model_config = ConfigDict(extra='forbid')
 
 class DateOpOperation(BaseModel):
-    type: Literal["date_op"] = "date_op"
+    type: Literal['date_op'] = 'date_op'
     source_column: str
     function: Literal['YEAR','MONTH','DAY','WEEKDAY']
     
     model_config = ConfigDict(extra='forbid')
 
 class MathOpOperation(BaseModel):
-    type: Literal["math_op"] = "math_op"
-    source_columns: str | list = Field(min_length=1)  # type: ignore
-    expression: str = Field(pattern=r"^[a-zA-Z0-9_\s\+\-\*/\(\)\.]+$") # type: ignore
+    type: Literal['math_op'] = 'math_op'
+    source_columns: str | list = Field(min_length=1) 
+    expression: str = Field(pattern=r'^[a-zA-Z0-9_\s\+\-\*/\(\)\.]+$')
     
     model_config = ConfigDict(extra='forbid')
     
@@ -120,20 +120,20 @@ class CommonColumnCleaningOrTransformationModel(BaseModel):
 class ColumnModel(BaseModel):
     name: str
     classification: Literal[
-        "Identifier", "Dimensional", "Metric", "Temporal", 
-        "Geospatial", "Scientific", "Descriptive", "PII", 
-        "System/Metadata", "Unknown"
+        'Identifier', 'Dimensional', 'Metric', 'Temporal', 
+        'Geospatial', 'Scientific', 'Descriptive', 'PII', 
+        'System/Metadata', 'Unknown'
     ]
-    confidence_score: float
-    data_type: Literal["string", "integer", "float", "datetime"]
-    type: Literal["Categorical", "Numerical"]
-    unit: str = ""
+    confidence_score: Literal['low', 'medium', 'high']
+    data_type: Literal['string', 'integer', 'float', 'datetime']
+    type: Literal['Categorical', 'Numerical']
+    unit: str = ''
     expected_values: List[str | int | float] = []
     
     model_config = ConfigDict(extra='forbid')
 
 class FilterStepModel(BaseModel):
-    function: Literal["filter"]
+    function: Literal['filter']
     column_name: str
     operator: Literal['in', '>', '<', '>=', '<=', '==', '!=', 'between']
     values: Union[List[Any], str]
@@ -141,10 +141,10 @@ class FilterStepModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
 class GroupByStepModel(BaseModel):
-    function: Literal["groupby"]
+    function: Literal['groupby']
     columns_to_group_by: List[str] = Field(min_length=1)
     columns_to_aggregate: List[str] = Field(min_length=1)
-    calculation: List[Literal["mean", "median", "min", "max", "count", "size", "sum"]]
+    calculation: List[Literal['mean', 'median', 'min', 'max', 'count', 'size', 'sum']]
 
     model_config = ConfigDict(extra='forbid')
     
@@ -155,29 +155,29 @@ class GroupByStepModel(BaseModel):
         agg_cols = model_instance.columns_to_aggregate
         
         if sorted(group_cols) == sorted(agg_cols):
-            raise ValueError('similar groupby-aggregate pair')
+            raise ValueError('similar columns for groupby-aggregate pair')
         return model_instance
 
 class TopBottomNStepModel(BaseModel):
-    function: Literal["get_top_or_bottom_N_entries"]
+    function: Literal['get_top_or_bottom_N_entries']
     sort_by_column_name: str
-    order: Literal["top", "bottom"]
+    order: Literal['top', 'bottom']
     number_of_entries: int
     return_columns: List[str]
     
     model_config = ConfigDict(extra='forbid')
 
 class ProportionStepModel(BaseModel):
-    function: Literal["get_proportion"]
+    function: Literal['get_proportion']
     column_name: List[str]
     values: List[str] = []
     
     model_config = ConfigDict(extra='forbid')
 
 class ColStatsStepModel(BaseModel):
-    function: Literal["get_column_statistics"]
+    function: Literal['get_column_statistics']
     column_name: List[str]
-    calculation: List[Literal["mean", "median", "min", "max", "count", "sum"]]
+    calculation: List[Literal['mean', 'median', 'min', 'max', 'count', 'sum']]
     
     model_config = ConfigDict(extra='forbid')
 
@@ -190,8 +190,9 @@ class CommonTaskModel(BaseModel):
     
     model_config = ConfigDict(extra='forbid')
 
+
 STEP_MODELS = [FilterStepModel, GroupByStepModel, TopBottomNStepModel, ProportionStepModel, ColStatsStepModel]
-OPERATION_MODELS = [MapOperation, MapRangeOperation, DateOpOperation, MathOpOperation,]
+TRANSFORM_MODELS = [MapOperation, MapRangeOperation, DateOpOperation, MathOpOperation,]
 COMBINATION_MODELS = [CommonColumnCombinationOperation]
 
 def validate_model_wrapper(val, model):
@@ -207,7 +208,7 @@ def filter_out_invalid_values(values, models):
         if any(validate_model_wrapper(v, m) for m in models):
             valid_vals.append(v)
     return valid_vals        
-class DatasetAnalysisModel(BaseModel):
+class DatasetAnalysisModel(BaseModel): # model for the result of llm prompt
     domain: str
     description: str
     columns: List[ColumnModel]
@@ -226,7 +227,7 @@ class DatasetAnalysisModel(BaseModel):
         missing = set(req_cols) - set(resp_cols)
         if missing:
             raise ValueError(
-                f"some columns are missing from the response: {', '.join(missing)}"
+                f'some columns are missing from the response: {', '.join(missing)}'
             )
         return value
 
@@ -235,18 +236,18 @@ class DatasetAnalysisModel(BaseModel):
     def filter_common_tasks(cls, values):
         valid_values = []
         for task in values:
-            steps = filter_out_invalid_values(task.steps, STEP_MODELS)
-            if len(steps) == len(task.steps):
+            valid_steps = filter_out_invalid_values(task.steps, STEP_MODELS)
+            if len(valid_steps) == len(task.steps):
                 valid_values.append(task)
                 
         if len(valid_values) < 5:
-            raise ValueError("too few valid common_tasks")
+            raise ValueError('too few valid common_tasks')
         return valid_values
 
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
     def filter_transforms(cls, values):
-        return filter_out_invalid_values(values, OPERATION_MODELS)
+        return filter_out_invalid_values(values, TRANSFORM_MODELS)
 
     @field_validator('common_column_combination', mode='after')
     @classmethod
@@ -254,7 +255,7 @@ class DatasetAnalysisModel(BaseModel):
         return filter_out_invalid_values(values, COMBINATION_MODELS)
 
 
-class DataTasks(BaseModel):
+class DataTasks(BaseModel): # smaller model for subsequent task runs
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_column_combination: list[CommonColumnCombinationModel] = []
@@ -264,17 +265,17 @@ class DataTasks(BaseModel):
     def filter_common_tasks(cls, values):
         valid_values = []
         for task in values:
-            steps = filter_out_invalid_values(task.steps, STEP_MODELS)
-            if len(steps) == len(task.steps):
+            valid_steps = filter_out_invalid_values(task.steps, STEP_MODELS)
+            if len(valid_steps) == len(task.steps):
                 valid_values.append(task)
         if len(valid_values) < 5:
-            raise ValueError("Too few valid common_tasks")
+            raise ValueError('Too few valid common_tasks')
         return valid_values
 
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
     def filter_transforms(cls, values):
-        return filter_out_invalid_values(values, OPERATION_MODELS)
+        return filter_out_invalid_values(values, TRANSFORM_MODELS)
 
     @field_validator('common_column_combination', mode='after')
     @classmethod
