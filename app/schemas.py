@@ -44,19 +44,19 @@ class CommonColumnCombinationOperation(BaseModel):
     def check_if_columns_match_expression(cls, model_instance):
         regex = r'\b(?![0-9]+(\.[0-9]+)?\b)([a-zA-Z0-9_]+)\b'
         expression = model_instance.expression
-        source_cols = model_instance.source_colums
+        source_cols = model_instance.source_columns
         
         matches = re.finditer(regex, expression)
         matches = [match.group(2) for match in matches]
         
         if not sorted(matches) == sorted(source_cols):
-            return ValueError('columns in expressions dont match source columns')
+            raise ValueError('columns in expressions dont match source columns')
         return model_instance
     
 class CommonColumnCombinationModel(BaseModel):
     name: str
     description: str
-    operation: CommonColumnCombinationOperation
+    operation: dict
     
     model_config = ConfigDict(extra='forbid')
 
@@ -106,7 +106,7 @@ class MathOpOperation(BaseModel):
         matches = [match.group(2) for match in matches]
         
         if not sorted(matches) == sorted(source_cols):
-            return ValueError('columns in expressions dont match source columns')
+            raise ValueError('columns in expressions dont match source columns')
         return model_instance
 
 class CommonColumnCleaningOrTransformationModel(BaseModel):
@@ -190,13 +190,23 @@ class CommonTaskModel(BaseModel):
     
     model_config = ConfigDict(extra='forbid')
 
-def validate_model_wrapper(model: BaseModel, val):
+STEP_MODELS = [FilterStepModel, GroupByStepModel, TopBottomNStepModel, ProportionStepModel, ColStatsStepModel]
+OPERATION_MODELS = [MapOperation, MapRangeOperation, DateOpOperation, MathOpOperation,]
+COMBINATION_MODELS = [CommonColumnCombinationOperation]
+
+def validate_model_wrapper(val, model):
     try:
         model.model_validate(val)
         return True
     except ValidationError:
         return False
-        
+
+def filter_out_invalid_values(values, models):
+    valid_vals = []
+    for v in values:
+        if any(validate_model_wrapper(v, m) for m in models):
+            valid_vals.append(v)
+    return valid_vals        
 class DatasetAnalysisModel(BaseModel):
     domain: str
     description: str
@@ -211,126 +221,65 @@ class DatasetAnalysisModel(BaseModel):
     @field_validator('columns', mode='after')
     @classmethod
     def check_all_columns_exist(cls, value: list[dict], info):
-        req_cols = info.context.get('required_cols')
-        cols_from_resp = [i.name for i in value]
-        
-        cols_not_exist = set(req_cols) - set(cols_from_resp)
-                
-        if len(cols_not_exist) > 0:
-            error_msg = f'the columns field doesnt contain all the columns from the dataset. missing cols: {", ".join(cols_not_exist)}'
-            raise ValueError(error_msg)
-        
+        req_cols = info.context.get('required_cols', [])
+        resp_cols = [col.name for col in value]
+        missing = set(req_cols) - set(resp_cols)
+        if missing:
+            raise ValueError(
+                f"some columns are missing from the response: {', '.join(missing)}"
+            )
         return value
-    
+
     @field_validator('common_tasks', mode='after')
     @classmethod
-    def filter_out_valid_common_tasks(cls, value: list[dict]):
+    def filter_common_tasks(cls, values):
         valid_values = []
-        
-        for val in value:
-            total_valid_steps = 0
-            for step in val.steps:    
-                models = (FilterStepModel, GroupByStepModel, TopBottomNStepModel, ProportionStepModel, ColStatsStepModel)
-                step_valid = any(validate_model_wrapper(model, step) for model in models)
-                if step_valid:
-                    total_valid_steps += 1
-                
-            if total_valid_steps == len(val.steps):
-                valid_values.append(val)
+        for task in values:
+            steps = filter_out_invalid_values(task.steps, STEP_MODELS)
+            if len(steps) == len(task.steps):
+                valid_values.append(task)
                 
         if len(valid_values) < 5:
-            raise ValueError('too few valid common_tasks') # raise an error if there are too few analyses tasks
-
+            raise ValueError("too few valid common_tasks")
         return valid_values
-    
+
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
-    def filter_out_invalid_column_transforms(cls, value: list[dict]):
-        if len(value) == 0:
-            return value
-             
-        valid_values = []
-        
-        for val in value:
-            models = (MapOperation, MapRangeOperation, DateOpOperation, MathOpOperation)
-            is_valid = any(validate_model_wrapper(model, val.operation) for model in models)
-            if is_valid:
-                valid_values.append(val)
-                
-        return valid_values # will return any values if its empty
-    
+    def filter_transforms(cls, values):
+        return filter_out_invalid_values(values, OPERATION_MODELS)
+
     @field_validator('common_column_combination', mode='after')
     @classmethod
-    def filter_out_invalid_column_combination(cls, value: list[dict]):
-        if len(value) == 0:
-            return value
-             
-        valid_values = []
-        
-        for val in value:
-            is_valid = validate_model_wrapper(val.operation, CommonColumnCombinationOperation)
-            if is_valid:
-                valid_values.append(val)
-                
-        return valid_values # will return any values if its empty
-    
+    def filter_combinations(cls, values):
+        return filter_out_invalid_values(values, COMBINATION_MODELS)
+
+
 class DataTasks(BaseModel):
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_column_combination: list[CommonColumnCombinationModel] = []
-    
+
     @field_validator('common_tasks', mode='after')
     @classmethod
-    def filter_out_valid_common_tasks(cls, value: list[dict]):
+    def filter_common_tasks(cls, values):
         valid_values = []
-        
-        for val in value:
-            total_valid_steps = 0
-            for step in val.steps:    
-                models = (FilterStepModel, GroupByStepModel, TopBottomNStepModel, ProportionStepModel, ColStatsStepModel)
-                step_valid = any(validate_model_wrapper(model, step) for model in models)
-                if step_valid:
-                    total_valid_steps += 1
-                
-            if total_valid_steps == len(val.steps):
-                valid_values.append(val)
-                
+        for task in values:
+            steps = filter_out_invalid_values(task.steps, STEP_MODELS)
+            if len(steps) == len(task.steps):
+                valid_values.append(task)
         if len(valid_values) < 5:
-            raise ValueError('too few valid common_tasks') # raise an error if there are too few analyses tasks
-
+            raise ValueError("Too few valid common_tasks")
         return valid_values
-    
+
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
-    def filter_out_invalid_column_transforms(cls, value: list[dict]):
-        if len(value) == 0:
-            return value
-             
-        valid_values = []
-        
-        for val in value:
-            models = (MapOperation, MapRangeOperation, DateOpOperation, MathOpOperation)
-            is_valid = any(validate_model_wrapper(model, val.operation) for model in models)
-            if is_valid:
-                valid_values.append(val)
-                
-        return valid_values # will return any values if its empty
-    
+    def filter_transforms(cls, values):
+        return filter_out_invalid_values(values, OPERATION_MODELS)
+
     @field_validator('common_column_combination', mode='after')
     @classmethod
-    def filter_out_invalid_column_combination(cls, value: list[dict]):
-        if len(value) == 0:
-            return value
-             
-        valid_values = []
-        
-        for val in value:
-            is_valid = validate_model_wrapper(val.operation, CommonColumnCombinationOperation)
-            if is_valid:
-                valid_values.append(val)
-                
-        return valid_values # will return any values if its empty
-                
+    def filter_combinations(cls, values):
+        return filter_out_invalid_values(values, COMBINATION_MODELS)
     
     
 if __name__ == '__main__':
