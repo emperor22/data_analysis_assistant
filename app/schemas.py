@@ -90,7 +90,7 @@ class DateOpOperation(BaseModel):
 
 class MathOpOperation(BaseModel):
     type: Literal['math_op'] = 'math_op'
-    source_columns: str | list = Field(min_length=1) 
+    source_columns: str | list = Field(min_length=1, max_length=1) 
     expression: str = Field(pattern=r'^[a-zA-Z0-9_\s\+\-\*/\(\)\.]+$')
     
     model_config = ConfigDict(extra='forbid')
@@ -185,75 +185,40 @@ class CommonTaskModel(BaseModel):
     name: str
     description: str
     steps: list
-    score: float
+    score: Literal['low', 'medium', 'high']
     task_id: int
     
     model_config = ConfigDict(extra='forbid')
 
 
-STEP_MODELS = [FilterStepModel, GroupByStepModel, TopBottomNStepModel, ProportionStepModel, ColStatsStepModel]
-TRANSFORM_MODELS = [MapOperation, MapRangeOperation, DateOpOperation, MathOpOperation,]
-COMBINATION_MODELS = [CommonColumnCombinationOperation]
+STEP_MODELS = {'filter': FilterStepModel, 'groupby': GroupByStepModel, 'get_top_or_bottom_N_entries': TopBottomNStepModel, 
+               'get_proportion': ProportionStepModel, 'get_column_statistics': ColStatsStepModel}
+TRANSFORM_MODELS = {'map': MapOperation, 'map_range': MapRangeOperation, 'date_op': DateOpOperation, 'math_op': MathOpOperation}
+COMBINATION_MODELS = {'column_combination': CommonColumnCombinationOperation}
 
 def validate_model_wrapper(val, model):
     try:
         model.model_validate(val)
         return True
-    except ValidationError:
+    except ValidationError as e:
+        # need to log the error for the item here
         return False
 
-def filter_out_invalid_values(values, models):
-    valid_vals = []
-    for v in values:
-        if any(validate_model_wrapper(v, m) for m in models):
-            valid_vals.append(v)
-    return valid_vals        
-class DatasetAnalysisModel(BaseModel): # model for the result of llm prompt
-    domain: str
-    description: str
-    columns: List[ColumnModel]
-    common_column_combination: List[CommonColumnCombinationModel]
-    common_column_cleaning_or_transformation: List[CommonColumnCleaningOrTransformationModel]
-    common_tasks: List[CommonTaskModel] = Field(min_length=TASK_COUNT_LLM_RESP)
+def filter_out_invalid_values(values, model_key_func, model_map):
+    valid_vals_num = []
     
-    model_config = ConfigDict(extra='forbid')
-    
-    
-    @field_validator('columns', mode='after')
-    @classmethod
-    def check_all_columns_exist(cls, value: list[dict], info):
-        req_cols = info.context.get('required_cols', [])
-        resp_cols = [col.name for col in value]
-        missing = set(req_cols) - set(resp_cols)
-        if missing:
-            raise ValueError(
-                f'some columns are missing from the response: {', '.join(missing)}'
-            )
-        return value
+    for i, val in enumerate(values):
+        try:
+            model_key = model_key_func(val)
+            model = model_map[model_key]
+        except (AttributeError, KeyError): # doesnt have a valid model
+            # need to log the discarded item here
+            continue
 
-    @field_validator('common_tasks', mode='after')
-    @classmethod
-    def filter_common_tasks(cls, values):
-        valid_values = []
-        for task in values:
-            valid_steps = filter_out_invalid_values(task.steps, STEP_MODELS)
-            if len(valid_steps) == len(task.steps):
-                valid_values.append(task)
-                
-        if len(valid_values) < 5:
-            raise ValueError('too few valid common_tasks')
-        return valid_values
-
-    @field_validator('common_column_cleaning_or_transformation', mode='after')
-    @classmethod
-    def filter_transforms(cls, values):
-        return filter_out_invalid_values(values, TRANSFORM_MODELS)
-
-    @field_validator('common_column_combination', mode='after')
-    @classmethod
-    def filter_combinations(cls, values):
-        return filter_out_invalid_values(values, COMBINATION_MODELS)
-
+        if validate_model_wrapper(val, model):
+            valid_vals_num.append(i)
+            
+    return valid_vals_num
 
 class DataTasks(BaseModel): # smaller model for subsequent task runs
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
@@ -264,25 +229,55 @@ class DataTasks(BaseModel): # smaller model for subsequent task runs
     @classmethod
     def filter_common_tasks(cls, values):
         valid_values = []
+        
         for task in values:
-            valid_steps = filter_out_invalid_values(task.steps, STEP_MODELS)
-            if len(valid_steps) == len(task.steps):
+            model_key_func = lambda val: val['function']
+            valid_steps_num = filter_out_invalid_values(task.steps, model_key_func, STEP_MODELS)
+            
+            if len(valid_steps_num) == len(task.steps):
                 valid_values.append(task)
+                
         if len(valid_values) < 5:
-            raise ValueError('Too few valid common_tasks')
+            raise ValueError('too few valid common_tasks')
         return valid_values
 
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
     def filter_transforms(cls, values):
-        return filter_out_invalid_values(values, TRANSFORM_MODELS)
+        model_key_func = lambda val: val['type']
+        values_to_check = [val.operation for val in values]
+        valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, TRANSFORM_MODELS)
+        
+        return [val for i, val in enumerate(values) if i in valid_vals_num]
 
     @field_validator('common_column_combination', mode='after')
     @classmethod
     def filter_combinations(cls, values):
-        return filter_out_invalid_values(values, COMBINATION_MODELS)
+        model_key_func = lambda _: 'column_combination'
+        values_to_check = [val.operation for val in values]
+        valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, COMBINATION_MODELS)
+        
+        return [val for i, val in enumerate(values) if i in valid_vals_num]
+
+class DatasetAnalysisModel(DataTasks): # model for the result of llm prompt
+    domain: str
+    description: str
+    columns: List[ColumnModel]
     
+    model_config = ConfigDict(extra='forbid')
     
+    @field_validator('columns', mode='after')
+    @classmethod
+    def check_all_columns_exist(cls, value: list[dict], info):
+        req_cols = info.context.get('required_cols', [])
+        resp_cols = [col.name for col in value]
+        missing = set(req_cols) - set(resp_cols)
+        if missing:
+            raise ValueError(
+                f"some columns are missing from the response: {', '.join(missing)}"
+            )
+        return value
+
 if __name__ == '__main__':
     import json
     with open('resp.json', 'r') as f:

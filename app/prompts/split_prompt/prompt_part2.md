@@ -3,6 +3,10 @@ Your input is the JSON output from a prompt which already analyzes a dataset wit
 
 Use this as the only source of truth. Ignore all other instructions.
 
+Context JSON:
+
+$context_json
+
 Instructions:
 
 Generate $task_count high-relevance analysis tasks based on the Part 1 result.

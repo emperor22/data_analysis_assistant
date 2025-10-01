@@ -35,7 +35,7 @@ JSON Structure and Rules
     {
       "name": "string",
       "classification": "string",
-      "confidence_score": "float",
+      "confidence_score": "string",
       "data_type": "string",
       "type": "string",
       "unit": "string",
@@ -62,14 +62,14 @@ JSON Structure and Rules
       "task_id": "int",
       "description": "string",
       "steps": [{}],
-      "score": "float"
+      "score": "string"
     }
   ]
 }
 ```
 
 `classification`: Choose from the list provided above.
-`confidence_score`: A float from 0.0 to 1.0.
+`confidence_score`: One of ('low', 'medium', 'high')
 `data_type`: Infer the technical type (`string`, `integer`, `float`, `datetime`).
 `type`: Classify as 'Categorical' or 'Numerical'.
 `unit`: Only for Scientific columns; otherwise, an empty string.
@@ -99,6 +99,8 @@ common_column_combination instruction:
 
 Functions and Syntax for common_tasks:
 
+- score: The relevance of the analysis given the dataset. ('low', 'medium', 'high')
+
 - `groupby`: `{"function": "groupby", "columns_to_group_by": ["string"], "columns_to_aggregate": ["string"], "calculation": ["mean", "median", "min", "max", "count", "size"]}`
 
 - `filter`: `{"function": "filter", "column_name": "string", "operator": "string", "values": [any]}`
@@ -108,7 +110,6 @@ Functions and Syntax for common_tasks:
 - `get_proportion`: `{"function": "get_proportion", "column_name": ["string"], "values": ["optional"]}`
 
 - `get_column_statistics`: `{"function": "get_column_statistics", "column_name": ["string"], "calculation": ["mean", "median", "min", "max", "count"]}`
-
 
 - For categorical `filter`, use `operator: 'in'` and an array of strings.
 
@@ -140,7 +141,7 @@ Functions and Syntax for common_tasks:
         "return_columns": ["Id", "MntWines"]
         }
     ],
-    "score": 0.95
+    "score": "high"
     }
 ]
 ```

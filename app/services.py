@@ -204,13 +204,15 @@ class DataAnalysisProcessor:
         
         for task in column_transformation_tasks:
             task = task.model_dump()
-            func_name = task['formula'].split('(')[0]
-            new_col_name = task['name'].replace(' ', '_')
+            type_ = task['formula'].split('(')[0]
+            name = task['name'].replace(' ', '_')
+            operation = task['operation']
             
             try:
-                func = self.column_transform_fn_map[func_name]
-                tmp = func(df=tmp, expression=task['formula'], new_col_name=new_col_name)
+                func = self.column_transform_fn_map[type_]
+                tmp = func(df=tmp, name=name, operation=operation)
                 tasks_status[task['name']] = 'successful'
+                
             except Exception as e:
                 tasks_status[task['name']] = f'failed. error: {e.args}'
                 continue
@@ -227,10 +229,10 @@ class DataAnalysisProcessor:
         
         for task in column_combination_tasks:
             task = task.model_dump()
-            name = task['name']
-            formula = task['formula']
+            name = task['name'].replace(' ', '_')
+            operation = task['operation']
             try:
-                tmp = self._get_column_combination(tmp, formula, name)
+                tmp = self._get_column_combination(df=tmp, name=name, operation=operation)
                 tasks_status[name] = 'successful'
             except Exception as e:
                 tasks_status[name] = f'failed. error: {e.args}'
@@ -256,6 +258,8 @@ class DataAnalysisProcessor:
     def _groupby_func(self, df: pd.DataFrame, columns_to_group_by: list, columns_to_aggregate: list, calculation: str):
         for cols_to_check in (columns_to_group_by, columns_to_aggregate):
             self._validate_columns(cols_to_check)
+            
+        df = df.copy()
         
         if len(calculation) > 1:
             agg_dct = {col: calculation for col in columns_to_aggregate}
@@ -270,6 +274,7 @@ class DataAnalysisProcessor:
     
     def _filter_func(self, df: pd.DataFrame, column_name: str, operator: str, values: list | str):
         self._validate_columns(column_name)
+        df = df.copy()
         
         if len(values) == 0:
             raise Exception('need to have filter values')
@@ -296,12 +301,15 @@ class DataAnalysisProcessor:
         for cols_to_check in sort_by_column_name, return_columns:
             self._validate_columns(cols_to_check)
         
+        df = df.copy()
+        
         asc_dct = {'bottom': True, 'top': False}
         ascending = asc_dct[order]
         return df.sort_values(sort_by_column_name, ascending=ascending)[return_columns].iloc[:number_of_entries]
     
     def _get_proportion_func(self, df: pd.DataFrame, column_name: str, values=None):
         self._validate_columns(column_name)
+        df = df.copy()
         
         if isinstance(column_name, list):
             column_name = column_name[0]
@@ -315,112 +323,109 @@ class DataAnalysisProcessor:
     
     def _get_column_statistics_func(self, df: pd.DataFrame, column_name: str, calculation: str):
         self._validate_columns(column_name)
+        df = df.copy()
         
         return df[column_name].agg(calculation)
     
     ####### column transform functions ########
       
-    def _apply_map_range(self, df: pd.DataFrame, expression: str, new_col_name: str):
-        match = re.search(r"MAP_RANGE\((.*?),\s*\[(.*?)\]\)", expression)
-        if not match:
-            raise Exception('invalid map_range formula')
+    def _apply_map(self, df, name: str, operation: dict):
+        self._validate_columns(operation['source_column'])
+
+        df = df.copy()
+        source_col = operation['source_column']
+        mapping = operation['mapping']
+        mapping = {str(i): j for i, j in mapping.items()} # standardizing mapped values to str
         
-        column_name = match.group(1).strip()
+        df[name] = df[source_col].astype(str).map(mapping) # convert to string to get valid mapping
         
-        self._validate_columns(column_name)
-        
-        ranges_str = match.group(2).strip().replace("'", '"').replace("inf", "1e309") # replace inf with really big number for easier parsing
-        
-        try:
-            ranges_list = ast.literal_eval(ranges_str)
-        except Exception:
-            raise Exception('invalid range dictionary')
-        
-        def get_bin_label(value, ranges):
-            for item in ranges:
-                range_key = list(item.keys())[0]
-                label = item[range_key]
-                start_str, end_str = range_key.split('-')
-                
-                start = float(start_str)
-                end = float(end_str)
+        return df
+
+    def _apply_map_range(self, df, name: str, operation: dict):
+        self._validate_columns(operation['source_column'])
+
+        df = df.copy()
+        source_col = operation['source_column']
+        ranges = operation['ranges']
+
+        ranges_lst = []
+        for r_def in ranges:
+            range_str = r_def['range']
+            label = r_def['label']
+
+            range_str = range_str.replace('inf', f'{1e20}') # replacing inf with big number for easier parsing
+            start_str, end_str = range_str.split('-')
+            
+            start = float(start_str)
+            end = float(end_str)
+            
+            ranges_lst.append({'start': start, 'end': end, 'label': label})
+
+
+        def get_label(value):
+            if pd.isna(value):
+                return np.nan
+            
+            for r in ranges_lst:
+                start, end, label = r['start'], r['end'], r['label']
                 
                 if start <= value <= end:
                     return label
-            return None
-        
-        try:
-            df[new_col_name] = df[column_name].apply(lambda x: get_bin_label(x, ranges_list))
-        except Exception:
-            raise Exception('failed to bin values')
-        return df
-
-    def _apply_date_op(self, df: pd.DataFrame, expression: str, new_col_name: str):
-        match = re.search(r"DATE_OP\((YEAR|MONTH|DAY|WEEKDAY),\s*(.*)\)", expression)
-        if not match:
-            raise Exception("invalid date_op formula")
             
-        function_name, column_name = match.groups()
+            return np.nan
         
-        self._validate_columns(column_name)
-        
-        df[column_name] = pd.to_datetime(df[column_name])
-        
-        if function_name == 'YEAR':
-            df[new_col_name] = df[column_name].dt.year
-        elif function_name == 'MONTH':
-            df[new_col_name] = df[column_name].dt.month
-        elif function_name == 'DAY':
-            df[new_col_name] = df[column_name].dt.day
-        elif function_name == 'WEEKDAY':
-            df[new_col_name] = df[column_name].dt.weekday
-        
-        return df
-    
-    def _apply_math_op(self, df: pd.DataFrame, expression: str, new_col_name: str):
-        match = re.search(r"MATH_OP\((.*)\)", expression)
-        if not match:
-            raise Exception('invalid math_op formula')
-
-        columns_to_check = re.findall(r'[a-zA-Z_]+', expression.split('(')[1])
-        self._validate_columns(columns_to_check)
-        
-        inner_expression = match.group(1).strip()
-        
-        try:
-            df[new_col_name] = df.eval(inner_expression)
-        except Exception:
-            raise Exception('invalid math_op formula')
-        
-        return df
-
-    def _apply_map(self, df: pd.DataFrame, expression: str, new_col_name: str):
-        match = re.search(r"MAP\((.*?),\s*({.*})\)", expression)
-        if not match:
-            raise Exception('invalid map formula')
+        df[name] = df[source_col].apply(get_label)
             
-        column_name, mapping_str = match.groups()
-        self._validate_columns(column_name)
+        return df
+
+    def _apply_date_op(self, df, name: str, operation: dict):
+        self._validate_columns(operation['source_column'])
         
-        mapping_dict = ast.literal_eval(mapping_str)
+        df = df.copy()
+        source_col = operation['source_column']
+        function = operation['function'].upper()
         
-        if is_numeric_dtype(df[column_name]):
-            mapping_dict = {int(i): j for i, j in mapping_dict.items}
-        
-        df[new_col_name] = df[column_name].map(mapping_dict)
+        if source_col in df.columns:
+            date_series = pd.to_datetime(df[source_col], errors='coerce')
+            
+            if function == 'YEAR':
+                df[name] = date_series.dt.year
+            elif function == 'MONTH':
+                df[name] = date_series.dt.month
+            elif function == 'DAY':
+                df[name] = date_series.dt.day
+            elif function == 'WEEKDAY':
+                df[name] = date_series.dt.weekday
+            
+        return df
+
+    def _apply_math_op(self, df, name: str, operation: dict):
+        self._validate_columns(operation['source_column'])
+
+        df = df.copy()
+        expression = operation['expression']
+
+        try:
+            df[name] = df.eval(expression)
+        except Exception:
+            print(f"invalid math_op expression")
+
         return df
 
     ########### column combination functions ###########
     
-    def _get_column_combination(self, df: pd.DataFrame, expression: str, new_col_name: str):
-        columns_to_check = re.findall(r'[a-zA-Z_]+', expression)
-        self._validate_columns(columns_to_check)
+    def _get_column_combination(self, df: pd.DataFrame, name: str, operation: str):
+        self._validate_columns(operation['source_columns'])
+
         df = df.copy()
+        expression = operation['expression']
+
         try:
-            df[new_col_name] = df.eval(expression)
-            return df
+            df[name] = df.eval(expression)
         except Exception:
-            raise Exception('invalid column combination expression')
+            print(f"invalid column combination expression")
+
+        return df
     
 
     
