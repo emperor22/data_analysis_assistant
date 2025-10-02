@@ -100,7 +100,7 @@ class MathOpOperation(BaseModel):
     def check_if_columns_match_expression(cls, model_instance):
         regex = r'\b(?![0-9]+(\.[0-9]+)?\b)([a-zA-Z0-9_]+)\b'
         expression = model_instance.expression
-        source_cols = model_instance.source_colums
+        source_cols = model_instance.source_columns
         
         matches = re.finditer(regex, expression)
         matches = [match.group(2) for match in matches]
@@ -112,7 +112,7 @@ class MathOpOperation(BaseModel):
 class CommonColumnCleaningOrTransformationModel(BaseModel):
     name: str
     description: str
-    operation: dict
+    operation: dict # this will be validated in the outer class (DataAnalysisModel)
     
     model_config = ConfigDict(extra='forbid')
 
@@ -134,9 +134,9 @@ class ColumnModel(BaseModel):
 
 class FilterStepModel(BaseModel):
     function: Literal['filter']
-    column_name: str
-    operator: Literal['in', '>', '<', '>=', '<=', '==', '!=', 'between']
-    values: Union[List[Any], str]
+    column_name: List[str] | str
+    operator: Literal['in', '>', '<', '>=', '<=', '==', '=', '<>', '!=', 'between']
+    values: List[Any] | str | int | float
     
     model_config = ConfigDict(extra='forbid')
 
@@ -160,7 +160,7 @@ class GroupByStepModel(BaseModel):
 
 class TopBottomNStepModel(BaseModel):
     function: Literal['get_top_or_bottom_N_entries']
-    sort_by_column_name: str
+    sort_by_column_name: List[str] | str
     order: Literal['top', 'bottom']
     number_of_entries: int
     return_columns: List[str]
@@ -169,22 +169,22 @@ class TopBottomNStepModel(BaseModel):
 
 class ProportionStepModel(BaseModel):
     function: Literal['get_proportion']
-    column_name: List[str]
-    values: List[str] = []
+    column_name: List[str] | str
+    values: List[str | int] = []
     
     model_config = ConfigDict(extra='forbid')
 
 class ColStatsStepModel(BaseModel):
     function: Literal['get_column_statistics']
-    column_name: List[str]
+    column_name: List[str] | str
     calculation: List[Literal['mean', 'median', 'min', 'max', 'count', 'sum']]
     
     model_config = ConfigDict(extra='forbid')
-
+    
 class CommonTaskModel(BaseModel):
     name: str
     description: str
-    steps: list
+    steps: list # this will be validated in the outer validation (DataAnalysisModel)
     score: Literal['low', 'medium', 'high']
     task_id: int
     
@@ -220,51 +220,33 @@ def filter_out_invalid_values(values, model_key_func, model_map):
             
     return valid_vals_num
 
-class DataTasks(BaseModel): # smaller model for subsequent task runs
-    common_tasks: list[CommonTaskModel] = Field(min_length=1)
+class DatasetAnalysisModelPartOne(BaseModel):
+    domain: str
+    description: str
+    columns: List[ColumnModel]
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_column_combination: list[CommonColumnCombinationModel] = []
-
-    @field_validator('common_tasks', mode='after')
-    @classmethod
-    def filter_common_tasks(cls, values):
-        valid_values = []
-        
-        for task in values:
-            model_key_func = lambda val: val['function']
-            valid_steps_num = filter_out_invalid_values(task.steps, model_key_func, STEP_MODELS)
-            
-            if len(valid_steps_num) == len(task.steps):
-                valid_values.append(task)
-                
-        if len(valid_values) < 5:
-            raise ValueError('too few valid common_tasks')
-        return valid_values
-
+    
+    model_config = ConfigDict(extra='forbid')
+    
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
-    def filter_transforms(cls, values):
+    def filter_out_invalid_transforms(cls, values):
         model_key_func = lambda val: val['type']
         values_to_check = [val.operation for val in values]
         valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, TRANSFORM_MODELS)
-        
+        print('transform', len(valid_vals_num))
         return [val for i, val in enumerate(values) if i in valid_vals_num]
 
     @field_validator('common_column_combination', mode='after')
     @classmethod
-    def filter_combinations(cls, values):
+    def filter_out_invalid_combinations(cls, values):
         model_key_func = lambda _: 'column_combination'
         values_to_check = [val.operation for val in values]
         valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, COMBINATION_MODELS)
-        
-        return [val for i, val in enumerate(values) if i in valid_vals_num]
+        print('combination', len(valid_vals_num))
 
-class DatasetAnalysisModel(DataTasks): # model for the result of llm prompt
-    domain: str
-    description: str
-    columns: List[ColumnModel]
-    
-    model_config = ConfigDict(extra='forbid')
+        return [val for i, val in enumerate(values) if i in valid_vals_num]
     
     @field_validator('columns', mode='after')
     @classmethod
@@ -277,13 +259,39 @@ class DatasetAnalysisModel(DataTasks): # model for the result of llm prompt
                 f"some columns are missing from the response: {', '.join(missing)}"
             )
         return value
+class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent task runs
+    common_tasks: list[CommonTaskModel] = Field(min_length=1)
+
+    @field_validator('common_tasks', mode='after')
+    @classmethod
+    def filter_common_tasks(cls, values):
+        valid_values = []
+        
+        for task in values:
+            model_key_func = lambda val: val['function']
+            valid_steps_num = filter_out_invalid_values(task.steps, model_key_func, STEP_MODELS)
+            
+            if len(valid_steps_num) < len(task.steps):
+                print('task discarded: task id', task.task_id) 
+            
+            if len(valid_steps_num) == len(task.steps):
+                valid_values.append(task)
+        
+        if len(valid_values) < 5:
+            raise ValueError('too few valid common_tasks')
+        return valid_values
+    
+class DataTasks(BaseModel):
+    common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
+    common_tasks: list[CommonTaskModel] = Field(min_length=1)
+    common_column_combination: list[CommonColumnCombinationModel] = []
 
 if __name__ == '__main__':
     import json
-    with open('resp.json', 'r') as f:
+    with open('resp1.json', 'r') as f:
         data = json.load(f)
         
-    DatasetAnalysisModel.model_validate(data, context={
+    DatasetAnalysisModelPartOne.model_validate(data, context={
         'required_cols': 
         ['id', 'loan_amnt', 'term', 'int_rate', 'installment', 'home_ownership','annual_inc', 'verification_status', 'issue_d', 'loan_status','purpose', 'total_pymnt']})
     

@@ -1,0 +1,231 @@
+{
+    "common_tasks": [
+        {
+            "name": "Loan Default Rate by Term Category",
+            "task_id": 1,
+            "description": "Calculate the average default rate for loans categorized by their term (short vs. long term).",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "loan_term_category"
+                    ],
+                    "columns_to_aggregate": [
+                        "is_default"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Compare Average Interest Rate for Defaulted vs. Paid Loans",
+            "task_id": 2,
+            "description": "Determine the difference in average interest rates between loans that were fully paid and those that were charged off.",
+            "steps": [
+                {
+                    "function": "filter",
+                    "column_name": "loan_status",
+                    "operator": "in",
+                    "values": [
+                        "fully paid",
+                        "charged off"
+                    ]
+                },
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "loan_status"
+                    ],
+                    "columns_to_aggregate": [
+                        "int_rate"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Top 5 Loan Purposes with Highest Default Rates",
+            "task_id": 3,
+            "description": "Identify the top 5 loan purposes that exhibit the highest default rates.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "purpose"
+                    ],
+                    "columns_to_aggregate": [
+                        "is_default"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                },
+                {
+                    "function": "get_top_or_bottom_N_entries",
+                    "sort_by_column_name": "is_default",
+                    "order": "top",
+                    "number_of_entries": 5,
+                    "return_columns": [
+                        "purpose",
+                        "is_default"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Examine Loan-to-Income Ratio by Annual Income Bracket",
+            "task_id": 4,
+            "description": "Calculate the average loan-to-income ratio for different annual income brackets to understand financial leverage across income groups.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "annual_income_bracket"
+                    ],
+                    "columns_to_aggregate": [
+                        "loan_to_income_ratio"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "medium"
+        },
+        {
+            "name": "Analyze Monthly Payment Affordability for Fully Paid Loans",
+            "task_id": 5,
+            "description": "Calculate the mean monthly payment to income ratio specifically for loans that have been fully paid, indicating affordability for successful repayments.",
+            "steps": [
+                {
+                    "function": "filter",
+                    "column_name": "loan_status",
+                    "operator": "==",
+                    "values": [
+                        "fully paid"
+                    ]
+                },
+                {
+                    "function": "get_column_statistics",
+                    "column_name": [
+                        "monthly_payment_to_income_ratio"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "medium"
+        },
+        {
+            "name": "Distribution of Total Interest Paid by Loan Term",
+            "task_id": 6,
+            "description": "Determine the average total interest paid by borrowers based on whether their loan was a short-term or long-term loan.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "loan_term_category"
+                    ],
+                    "columns_to_aggregate": [
+                        "total_interest_paid"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "medium"
+        },
+        {
+            "name": "Default Rate by Home Ownership Status",
+            "task_id": 7,
+            "description": "Investigate how loan default rates vary among different home ownership statuses (e.g., Rent, Mortgage, Own, Other/Unknown).",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "home_ownership_grouped"
+                    ],
+                    "columns_to_aggregate": [
+                        "is_default"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Average Loan Amount Over Time Since Issue",
+            "task_id": 8,
+            "description": "Analyze how the average loan amount has changed based on how long ago the loan was issued.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "issue_months_ago"
+                    ],
+                    "columns_to_aggregate": [
+                        "loan_amnt"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "low"
+        },
+        {
+            "name": "Interest Rate by Verification Status for Defaults",
+            "task_id": 9,
+            "description": "Calculate the mean interest rate for 'charged off' loans, grouped by their verification status, to understand if verification plays a role in risk at different interest rates.",
+            "steps": [
+                {
+                    "function": "filter",
+                    "column_name": "is_default",
+                    "operator": "==",
+                    "values": [
+                        1
+                    ]
+                },
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "verification_status"
+                    ],
+                    "columns_to_aggregate": [
+                        "int_rate"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Overall Loan Default Proportion",
+            "task_id": 10,
+            "description": "Calculate the overall proportion of loans that have been charged off across the entire dataset.",
+            "steps": [
+                {
+                    "function": "get_proportion",
+                    "column_name": "is_default",
+                    "values": [
+                        1
+                    ]
+                }
+            ],
+            "score": "high"
+        }
+    ]
+}

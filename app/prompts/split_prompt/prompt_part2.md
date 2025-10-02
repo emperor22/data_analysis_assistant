@@ -58,7 +58,7 @@ Supported Functions:
       "return_columns": ["Id", "MntWines"]
     }
   ],
-  "score": 0.95
+  "score": "high"
 }
 
 Final output JSON schema:
@@ -70,7 +70,7 @@ Final output JSON schema:
       "task_id": "int",
       "description": "string",
       "steps": [{}],
-      "score": "float"
+      "score": "string"
     }
   ]
 }

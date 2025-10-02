@@ -7,7 +7,7 @@ cols_per_row = 1
 
 task_id = 1 # this should be selectable with a selectbox with this format: 'req_id - dataset_name - date'
 
-score_threshold = st.number_input('Minimum score', 0., 1., 0., step=0.05)
+score_threshold = st.multiselect('Select scores', ['low', 'medium', 'high'], default=['low', 'medium', 'high'])
 
 
 
@@ -63,8 +63,8 @@ for task in st.session_state.tasks[task_id]:
     col1, col2 = st.columns([3, 1])
     id_ = task['task_id']
     
-    if task['score'] < score_threshold:
-        continue
+    # if task['score'] in score_threshold:
+    #     continue
     
     with col2:
         if not id_ in st.session_state.selected_tasks_to_modify[task_id]:

@@ -3,11 +3,11 @@ import json
 import time
 from sqlalchemy import create_engine
 
-from app.services import get_prompt_result, process_llm_api_response, DataAnalysisProcessor
+from app.services import get_prompt_result, process_llm_api_response, DataAnalysisProcessor, insert_prompt_pt2_context
 from app.crud import TaskRunTableOperation, PromptTableOperation, base_engine_sync
 import asyncio
 
-from app.schemas import DataTasks, DatasetAnalysisModel
+from app.schemas import DataTasks, DatasetAnalysisModelPartOne, DatasetAnalysisModelPartTwo
 from pydantic import ValidationError
 from requests.exceptions import RequestException
 
@@ -22,31 +22,50 @@ class DatabaseTask(app.Task):
 
 # if it persists, write 'not enough common tasks, probably invalid dataset' status to prompt_and_result and (maybe) blacklist the dataset
 
-retry_for_exceptions_list_get_prompt_task = [ValidationError, RequestException]
+retry_for_exceptions_get_prompt_task = [ValidationError, RequestException]
 
-@app.task(bind=True, base=DatabaseTask, name='tasks.get_prompt_result_task', acks_late=True, time_limit=120, max_retries=3, rate_limit='15/m', 
-          retry_backoff=True, retry_backoff_max=60, autoretry_for=retry_for_exceptions_list_get_prompt_task)
-def get_prompt_result_task(self, model, prompt, request_id, dataset_cols):
+@app.task(bind=True, base=DatabaseTask, name='tasks.get_prompt_result_task', acks_late=True, time_limit=200, max_retries=3, rate_limit='15/m', 
+          retry_backoff=True, retry_backoff_max=60, autoretry_for=retry_for_exceptions_get_prompt_task)
+def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, dataset_cols):
     # TO DO:
     # catch requestlimit error and throttle for 60 seconds
     # llm api request limit reset at midnight pacific time
     
-    resp = get_prompt_result(prompt, model)     
-    result = process_llm_api_response(resp)
-    with open('resp.json', 'w') as f:
-        f.write(json.dumps(result, indent=4))
-    # mocking api call
-    # with open('resp2.json', 'r') as f:
-    #     result = json.load(f)
+    # getting result for prompt part 1
+    # resp_pt_1 = get_prompt_result(prompt_pt_1, model)     
+    # resp_pt_1 = process_llm_api_response(resp_pt_1)
+    
+    # with open('resp_pt1.json', 'w') as f:
+    #     f.write(json.dumps(resp_pt_1, indent=4))
+    
+    with open('resp1.json', 'r') as f:
+        resp_pt_1 = json.load(f)
         
-    DatasetAnalysisModel.model_validate(result, context={'required_cols': dataset_cols})
+    DatasetAnalysisModelPartOne.model_validate(resp_pt_1, context={'required_cols': dataset_cols})
 
-    result_str = json.dumps(result)
+    # getting result for prompt part 2
+    # prompt_pt_2_file = 'app/prommpts/split_prompt/prompt_part2.md'
+    # prompt_pt_2 = insert_prompt_pt2_context(prompt_file=prompt_pt_2_file, 
+    #                                         task_count=task_count, 
+    #                                         resp_pt_1=resp_pt_1)
+    
+    # resp_pt_2 = get_prompt_result(prompt_pt_2, model)     
+    # resp_pt_2 = process_llm_api_response(resp_pt_2)
+    
+    # with open('resp_pt2.json', 'w') as f:
+    #     f.write(json.dumps(resp_pt_2, indent=4))
+    
+    with open('resp2.json', 'r') as f:
+        resp_pt_2 = json.load(f)
+    
+    DatasetAnalysisModelPartTwo.model_validate(resp_pt_2)
+    
+    result = {**resp_pt_1, **resp_pt_2}
     
     engine = self.get_engine() # type: ignore
     with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
-        prompt_table_ops.insert_prompt_result_sync(request_id=request_id, prompt_result=result_str)
+        prompt_table_ops.insert_prompt_result_sync(request_id=request_id, prompt_result=json.dumps(result))
 
     # write response, token_count to main table
     

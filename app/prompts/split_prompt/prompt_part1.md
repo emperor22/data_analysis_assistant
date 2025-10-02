@@ -55,7 +55,7 @@ For each column, output:
 - data_type (string, integer, float, datetime)
 - type (Categorical or Numerical)
 - unit (only for Scientific columns, otherwise empty)
-- expected_values (list, range, or empty)
+- expected_values (categorical: list of values, numerical: range of values, uncertain: empty)
 
 2. Common Column Combination
 
