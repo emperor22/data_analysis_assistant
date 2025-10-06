@@ -11,6 +11,7 @@ from fastapi import UploadFile
 import re
 import ast
 import json
+from typing import Literal
 
 from app.crud import TaskRunTableOperation
 from app.schemas import DataTasks
@@ -81,18 +82,16 @@ class CsvReader(FileReader):
         self.df = pd.read_csv(io.BytesIO(self.file_content))
         
 class DatasetProcessorForPrompt:
-    def __init__(self, dataframe: pd.DataFrame, filename: str, prompt_template_file: str, task_count: int):
+    def __init__(self, dataframe: pd.DataFrame, filename: str, prompt_template_file: str):
         self.dataframe = dataframe
         self.filename = filename
         self.prompt_template_file = prompt_template_file
-        self.task_count = task_count
         
     def create_prompt(self) -> str:
         with open(self.prompt_template_file, 'r') as f:
             template = Template(f.read())
         
-        context = {'task_count': self.task_count,
-                   'dataset_name': self.filename, 
+        context = {'dataset_name': self.filename, 
                    'dataset_snippet': self._get_dataset_snippet(), 
                    'dataset_column_unique_values': self._get_column_unique_values()}
         return template.substitute(context)
@@ -112,9 +111,8 @@ class DatasetProcessorForPrompt:
     
 class DataAnalysisProcessor:
     def __init__(self, data_tasks: DataTasks, run_info: dict, task_run_table_ops: TaskRunTableOperation, 
-                 common_tasks_only=False, first_run_after_request=True):
-        self.common_tasks_only = common_tasks_only
-        self.first_run_after_request = first_run_after_request
+                 run_type: Literal['first_run_after_request', 'modified_tasks_execution', 'additional_analyses_request']):
+        self.run_type = run_type
         
         parquet_file = run_info['parquet_file']
         self.request_id = run_info['request_id']
@@ -123,6 +121,13 @@ class DataAnalysisProcessor:
         self.df: pd.DataFrame = pd.read_parquet(parquet_file)
         
         self.data_tasks = data_tasks
+        
+        self.common_tasks_only = False
+        
+        if len(data_tasks.common_tasks) > 0 and \
+           len(data_tasks.common_column_cleaning_or_transformation) == 0 and \
+           len(data_tasks.common_column_combination) == 0:
+               self.common_tasks_only = True
         
         self.task_run_table_ops = task_run_table_ops
         
@@ -146,6 +151,7 @@ class DataAnalysisProcessor:
         if not self.common_tasks_only:
             self._process_column_transforms()
             self._process_column_combinations()
+            self.df.to_parquet(f'app/datasets/{self.request_id}.parquet', index=False)
         
         self._process_common_tasks()
     
@@ -191,14 +197,23 @@ class DataAnalysisProcessor:
                     
             common_tasks_modified.append(task_modified)
         
-        if self.first_run_after_request: # update original_common_tasks (now with results) at first task run after llm response
+        if self.run_type == 'first_run_after_request': # update original_common_tasks (now with results) at first task run after llm response
             self.task_run_table_ops.update_original_common_task_result_sync(request_id=self.request_id, 
                                                                             original_common_tasks=json.dumps({'original_common_tasks': common_tasks_modified})
                                                                             )
-        else:
+        elif self.run_type == 'modified_tasks_execution':
             self.task_run_table_ops.update_task_result_sync(request_id=self.request_id, 
                                                             common_tasks_w_result=json.dumps({'common_tasks_w_result': common_tasks_modified}), 
                                                             )
+        elif self.run_type == 'additional_analyses_request':
+            tasks_by_id = self.task_run_table_ops.get_task_by_id_sync(user_id=self.user_id, request_id=self.request_id)
+            original_common_tasks = tasks_by_id['original_common_tasks']
+            original_common_tasks = json.loads(original_common_tasks)['original_common_tasks'] # a list of common tasks
+            common_tasks_merged = original_common_tasks + common_tasks_modified # merge the original tasks and the new one
+            
+            self.task_run_table_ops.update_original_common_task_result_sync(request_id=self.request_id, 
+                                                                            original_common_tasks=json.dumps({'original_common_tasks': common_tasks_merged})
+                                                                            )
             
     def _process_col_transform_and_combination_helper(self, tasks, fn_map=None, is_col_combination_task= False):
         tmp = self.df.copy()
@@ -247,11 +262,9 @@ def save_uploaded_file(file: UploadFile, save_dir: str):
         with open(f'{save_dir}/{filename}', 'wb') as f:
             f.write(contents)
 
-def insert_prompt_pt2_context(prompt_file, task_count, resp_pt_1):
+def insert_prompt_context(prompt_file, context):
     with open(prompt_file, 'r') as f:
         template = Template(f.read())
-    
-    context = {'context_json': resp_pt_1, 'task_count': task_count}
     
     return template.substitute(context)
 
@@ -260,21 +273,10 @@ def get_prompt_result(prompt, model):
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
     
     payload_data = {
-        "contents": [
-        {
-            "parts": [
-            {
-                "text": prompt
-            }
-            ]
-        }
-        ]
+        "contents": [{"parts": [{"text": prompt}]}]
     }
 
-    headers = {
-        'Content-Type': 'application/json',
-        'X-goog-api-key': key
-    }
+    headers = {'Content-Type': 'application/json','X-goog-api-key': key}
     
     r = requests.post(url, json=payload_data, headers=headers)
     r.raise_for_status()

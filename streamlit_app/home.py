@@ -14,9 +14,7 @@ if not st.session_state.authenticated:
         username = st.text_input('Username', max_chars=10)
         password = st.text_input('Password', type='password')
         
-        login_btn = st.form_submit_button('Submit')
-        
-        if login_btn:
+        if st.form_submit_button('Submit'):
             login_data = submit_login_request(username, password)
             if login_data:
                 st.session_state['access_token'] = login_data['access_token']

@@ -1,0 +1,74 @@
+{
+    "common_tasks": [
+        {
+            "name": "Average Default Rate by Loan Term Category",
+            "task_id": 11,
+            "description": "Calculate the average default rate (percentage of charged-off loans) for each category of loan term (Short Term vs. Long Term) to understand the impact of loan duration on default risk.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "loan_term_category"
+                    ],
+                    "columns_to_aggregate": [
+                        "is_default"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Top 5 Loan Purposes by Default Rate",
+            "task_id": 12,
+            "description": "Identify the top 5 loan purposes that exhibit the highest default rates, indicating higher risk categories based on the reason for the loan.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "purpose"
+                    ],
+                    "columns_to_aggregate": [
+                        "is_default"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                },
+                {
+                    "function": "get_top_or_bottom_N_entries",
+                    "sort_by_column_name": "is_default_mean",
+                    "order": "top",
+                    "number_of_entries": 5,
+                    "return_columns": [
+                        "purpose",
+                        "is_default_mean"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Loan-to-Income Ratio by Annual Income Bracket",
+            "task_id": 13,
+            "description": "Examine the average loan-to-income ratio across different annual income brackets to understand how loan amounts relate to borrower income levels.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "annual_income_bracket"
+                    ],
+                    "columns_to_aggregate": [
+                        "loan_to_income_ratio"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                }
+            ],
+            "score": "high"
+        }
+    ]
+}

@@ -63,8 +63,8 @@ for task in st.session_state.tasks[task_id]:
     col1, col2 = st.columns([3, 1])
     id_ = task['task_id']
     
-    # if task['score'] in score_threshold:
-    #     continue
+    with col1:
+        render_original_task_expander(task)
     
     with col2:
         if not id_ in st.session_state.selected_tasks_to_modify[task_id]:
@@ -76,8 +76,7 @@ for task in st.session_state.tasks[task_id]:
             if st.button('Un-import task', key=f"remove_task_{id_}"):
                 st.session_state.selected_tasks_to_modify[task_id].remove(id_)
                 st.rerun()
-    with col1:
-        render_original_task_expander(task)
+
 
                 
             

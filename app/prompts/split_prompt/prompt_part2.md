@@ -19,7 +19,7 @@ Tasks should only use:
 
 Each task must include:
 - name: short descriptive title
-- task_id: unique integer
+- task_id: unique integer (starting from 1)
 - description: clear description of the task goal
 - steps: ordered list of functions with parameters
 - score: (low, medium, high) for estimated relevance

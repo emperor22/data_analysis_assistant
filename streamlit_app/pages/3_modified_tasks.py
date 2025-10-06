@@ -1,11 +1,13 @@
-from utils import send_tasks_to_process, render_modified_task_box
+from utils import send_tasks_to_process, render_modified_task_box, render_task_step, process_step_val, PARAMS_MAP, DEFAULT_PARAMS
 import streamlit as st
 import json
 from copy import deepcopy
 import time
+from string import Template
+from random import randint
 
-st.set_page_config(layout='wide')
-cols_per_row = 3
+cols_per_row = 1
+max_task_count = 30
 
 
 task_id = 1 # this should be selectable with a selectbox with this format: 'req_id - dataset_name - date'
@@ -51,46 +53,14 @@ if task_id not in st.session_state.modified_tasks:
 # need to get this info from db for each request_id
 ALL_COLUMNS = ['id', 'loan_amnt', 'term', 'int_rate', 'installment', 'home_ownership',
                'annual_inc', 'verification_status', 'issue_d', 'loan_status',
-               'purpose', 'total_pymnt', 'debt_to_income_ratio', 'interest_to_principal_ratio', 
-               'monthly_income', 'installment_to_income_ratio', 'loan_size_category', 'income_bracket', 
-               'risk_category', 'loan_term_category']
+               'purpose', 'total_pymnt', 'loan_to_income_ratio', 'total_interest_paid', 
+               'monthly_payment_to_income_ratio', 'annual_income_bracket', 'loan_term_category', 
+               'is_default', 'home_ownership_grouped', 'issue_months_ago']
 
-PARAMS_MAP = {
-    'groupby': {
-        'columns_to_group_by': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
-        'columns_to_aggregate': {'alias': 'Column(s) to aggregate', 'type': 'multiselect'},
-        'calculation': {'alias': 'Calculation', 'type': 'multiselect', 'options': ['mean', 'median', 'min', 'max', 'count', 'size', 'sum']}
-    },
-    'filter': {
-        'column_name': {'alias': 'Filter column', 'type': 'selectbox'},
-        'operator': {'alias': 'Condition', 'type': 'selectbox', 'options': ['>', '<', '>=', '<=', '==', '!=', 'in', 'between']},
-        'values': {'alias': 'Filter value(s)', 'type': {'numerical': 'number_input', 'text': 'text_input'}}
-    },
-    'get_top_or_bottom_N_entries': {
-        'sort_by_column_name': {'alias': 'Column to sort by', 'type': 'selectbox'},
-        'order': {'alias': 'Ordering', 'type': 'radio', 'options': ['top', 'bottom']},
-        'number_of_entries': {'alias': 'Number of entries', 'type': 'number_input'},
-        'return_columns': {'alias': 'Column(s) included in result', 'type': 'multiselect'},
-    },
-    'get_proportion': {
-        'column_name': {'alias': 'Column to get proportion of', 'type': 'selectbox'},
-        'values': {'alias': 'Value(s) to get proportion of', 'type': 'text_input'}
-    },
-    'get_columns_statistics': {
-        'column_name': {'alias': 'Column to get statistics from', 'type': 'selectbox'},
-        'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['mean', 'median', 'min', 'max', 'count', 'sum']}
-    },
-}
-
-DEFAULT_PARAMS = {
-    'groupby': ['columns_to_group_by', 'columns_to_aggregate'],
-    'filter': ['column_name', 'operator', 'values'],
-    'get_top_or_bottom_N_entries': ['number_of_entries', 'sort_by_column_name', 'order'],
-    'get_proportion': ['column_name', 'values'],
-    'get_columns_statistics': ['column_name'],
-}
 
 task_edit_tab, task_overview_tab = st.tabs(['Customize tasks', 'Task overview'])
+
+
 
 with task_edit_tab:
     st.subheader('Customize tasks')
@@ -102,25 +72,87 @@ with task_edit_tab:
         
         with current_cols[task_idx % cols_per_row]:
             with st.container(border=True):
-                st.markdown(f"**{task_idx+1}. {task['name']}**")
-                st.markdown(f"*{task['description']}*")
+                
+                col1, col2, col3, col4 = st.columns([10, 1, 1, 1])
+                
+                with col1:
+                    if st.checkbox('Edit name/description', key=f'edit_name_desc_{task_idx}'):
+                        with st.form(f'{task_idx}_name_desc_change', enter_to_submit=False):
+                            
+                            task_name_change = st.text_input('Task name')
+                            task_desc_change = st.text_input('Task description')
+                            
+                            if st.form_submit_button('💾', help='Save changes'):
+                                st.session_state.modified_tasks[task_id][task_idx]['name'] = task_name_change
+                                st.session_state.modified_tasks[task_id][task_idx]['description'] = task_desc_change
+                    
+                    del_dup_msg = st.empty()
+                    
+                with col3:
+                    if st.button('🗑️', key=f'del_task_{task_idx}', type='primary', help='Delete task'):
+                        id_ = task['task_id']
+                        new_tasks = [task for task in st.session_state.modified_tasks[task_id] if task['task_id'] != id_]
+                        st.session_state.modified_tasks[task_id] = new_tasks
+                        
+                        del_dup_msg.success('task deleted!')
+                        time.sleep(1)
+                        st.rerun()
+                        
+                with col4:
+                    if st.button('⿻', key=f'duplicate_task_{task_idx}', type='primary', help='Duplicate task'):
+                        if len(st.session_state.modified_tasks[task_id]) < max_task_count:
+                            del_dup_msg.error(f'total tasks cannot be more than {max_task_count}')
+                        
+                        id_ = task['task_id']
+                        dup_task = next(task for task in st.session_state.modified_tasks[task_id] if task['task_id'] == id_)
+                        dup_task = deepcopy(dup_task)
+                        dup_task['task_id'] = randint(100, 9999)
+                        dup_task['name'] = f"{dup_task['name']} (copy)"
+                        
+                        st.session_state.modified_tasks[task_id].append(dup_task)
+                        
+                        del_dup_msg.success('task duplicated! please scroll to the bottom to check it out.')
+                        time.sleep(2)
+                        st.rerun()
+                    
+                        
+                                
+                st.markdown(f"**{task['name']}**")
+                st.caption(f"*{task['description']}*")
 
                 for step_idx, step in enumerate(task['steps']):
-                    with st.expander(f"Step {step_idx + 1}: {step['function']}"):
-                        func_name = step['function']
-                        
-                        st.markdown('**Core Parameters**')
+                    func_name = step['function']
+                    expander_name = f'Step {step_idx+1}: {func_name}'
+                    
+                    with st.expander(expander_name):
+                        name_template = PARAMS_MAP[func_name]['template']
+                        step_args = {i: process_step_val(j) for i, j in step.items() if i != 'function'}
+                        name = Template(name_template).substitute(step_args)
+                        st.write(name)
+                        st.write('')
+
                         for step_param in DEFAULT_PARAMS.get(func_name, []):
                             param_info = PARAMS_MAP[func_name][step_param]
-
-                            new_value = render_modified_task_box(param_info=param_info, 
-                                                                all_columns=ALL_COLUMNS, 
-                                                                step_idx=step_idx, 
-                                                                step=step, 
-                                                                step_param=step_param, 
-                                                                task_idx=task_idx)
+                            form_key = f"form_{task_idx}_{step_idx}_{step_param}" 
                             
-                            st.session_state.modified_tasks[task_id][task_idx]['steps'][step_idx][step_param] = new_value
+                            with st.form(form_key, enter_to_submit=False):
+                                col1, col2 = st.columns([9, 1])
+                                
+                                with col1:
+                                    new_value = render_modified_task_box(param_info=param_info, 
+                                                                        all_columns=ALL_COLUMNS, 
+                                                                        step_idx=step_idx, 
+                                                                        step=step, 
+                                                                        step_param=step_param, 
+                                                                        task_idx=task_idx)
+                                    save_success_msg = st.empty()
+                                    
+                                with col2:
+                                    if st.form_submit_button('💾', help='Save changes'):
+                                        st.session_state.modified_tasks[task_id][task_idx]['steps'][step_idx][step_param] = new_value
+                                        save_success_msg.success('changes saved.')
+                                        time.sleep(1)
+                                        st.rerun()
 
                         with st.expander('Advanced Parameters'):
                             for step_param, param_value in step.items():
@@ -128,24 +160,35 @@ with task_edit_tab:
                                     continue
                                 
                                 param_info = PARAMS_MAP[func_name][step_param]
+                                form_key = f"form_{task_idx}_{step_idx}_{step_param}" 
 
-                                new_value = render_modified_task_box(param_info=param_info, 
-                                                                    all_columns=ALL_COLUMNS, 
-                                                                    step_idx=step_idx, 
-                                                                    step=step, 
-                                                                    step_param=step_param, 
-                                                                    task_idx=task_idx)
-                                
-                                st.session_state.modified_tasks[task_id][task_idx]['steps'][step_idx][step_param] = new_value
-            
-                if st.button(f'Save changes', use_container_width=True, key=f'run_task_{task_idx}'):
-                    st.success(f'Changes successfully saved')
-                    time.sleep(2)
-                    st.rerun()
+                                with st.form(form_key, enter_to_submit=False):
+                                    col1, col2 = st.columns([10, 1])
+                                    with col1:
+                                        new_value = render_modified_task_box(param_info=param_info, 
+                                                                            all_columns=ALL_COLUMNS, 
+                                                                            step_idx=step_idx, 
+                                                                            step=step, 
+                                                                            step_param=step_param, 
+                                                                            task_idx=task_idx)
+                                        save_success_msg = st.empty()
+
+                                    with col2:
+                                        if st.form_submit_button('💾', help='Save changes'):
+                                            st.session_state.modified_tasks[task_id][task_idx]['steps'][step_idx][step_param] = new_value
+                                            save_success_msg.success('Changes saved.')
+                                            time.sleep(1)
+                                            st.rerun()
+                    
+
                 
 with task_overview_tab:
     st.subheader('Tasks overview')
     st.write('\n')
+    
+    if st.checkbox('Use new dataset'):
+        new_dataset_task_req = st.file_uploader('Select new dataset', type=['csv'])
+        st.write('---')
 
 
     for task_idx, task in enumerate(st.session_state.modified_tasks[task_id]):
@@ -156,6 +199,7 @@ with task_overview_tab:
         id_ = task['task_id']
         task_name = task['name']
         score = task['score']
+        
         with current_cols[task_idx % cols_per_row]:
             expander_title = f"{task_idx+1} - {task_name}"
             with st.expander(expander_title, expanded=False):
@@ -164,27 +208,7 @@ with task_overview_tab:
                 st.markdown("**Steps:**")
                 
                 for step_num, step in enumerate(task.get('steps', [])):
-                    func_name = step['function']
-                    
-                    st.markdown(f"**{step_num + 1}. Function:** `{func_name}`")
-                    
-                    step_args = {k: v for k, v in step.items() if k != 'function'}
-                    
-                    for arg_key, arg_value in step_args.items():
-                        alias = PARAMS_MAP[func_name][arg_key]['alias']
-                        
-                        if isinstance(arg_value, (list, dict)):
-                            value = json.dumps(arg_value).replace('[', '').replace(']', '').replace("'", '').replace('"', '').strip()
-                            if value.startswith(','):
-                                value = value[1:].lstrip()
-                        else:
-                            value = str(arg_value)
-                            
-                        st.markdown(f"*{alias}:* `{value}`")
-                        
-                    st.write('')
-
-            st.write('')
+                    render_task_step(step_num, step)
                 
                 
     st.markdown('---')

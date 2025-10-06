@@ -107,7 +107,7 @@
                 {
                     "function": "filter",
                     "column_name": "loan_status",
-                    "operator": "==",
+                    "operator": "in",
                     "values": [
                         "fully paid"
                     ]

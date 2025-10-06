@@ -3,7 +3,6 @@ from typing import List, Union, Dict, Any, Literal
 import re
 from typing import Optional
 
-TASK_COUNT_LLM_RESP = 10
 class GetCurrentUserModel(BaseModel):
     username: str
     user_id: int
@@ -262,9 +261,12 @@ class DatasetAnalysisModelPartOne(BaseModel):
 class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent task runs
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
 
+    model_config = ConfigDict(extra='forbid')
+
+
     @field_validator('common_tasks', mode='after')
     @classmethod
-    def filter_common_tasks(cls, values):
+    def filter_common_tasks(cls, values, info):
         valid_values = []
         
         for task in values:
@@ -277,7 +279,10 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
             if len(valid_steps_num) == len(task.steps):
                 valid_values.append(task)
         
-        if len(valid_values) < 5:
+        run_type = info.context.get('run_type')
+        min_valid_values = 5 if run_type == 'first_run_after_request' else 1
+        
+        if len(valid_values) < min_valid_values:
             raise ValueError('too few valid common_tasks')
         return valid_values
     
@@ -285,6 +290,9 @@ class DataTasks(BaseModel):
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
     common_column_combination: list[CommonColumnCombinationModel] = []
+
+    model_config = ConfigDict(extra='forbid')  
+    
 
 if __name__ == '__main__':
     import json

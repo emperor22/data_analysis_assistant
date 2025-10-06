@@ -41,7 +41,8 @@ def create_tables_sqlite():
         filename text,
         dataset_cols text,
         model text,  
-        prompt_result text,
+        prompt_result text, 
+        additional_analyses_prompt_result, 
         status text,
         celery_task_id text,
         created_at datetime default CURRENT_TIMESTAMP
@@ -150,7 +151,42 @@ class PromptTableOperation:
 
         self.conn_sync.execute(text(query) ,{'request_id': request_id, 'prompt_result': prompt_result, 'status': status})
         self.conn_sync.commit()
-            
+        
+    async def get_prompt_result(self, request_id: int, user_id: int):
+        query = '''select prompt_result from prompt_and_result where user_id = :user_id and id = :request_id'''
+
+        res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
+        res = res.fetchone()
+        return res._mapping if res else None
+        
+    def get_prompt_result_sync(self, request_id: int, user_id: int):
+        if not self.conn_sync:
+            raise Exception('conn_sync object has not been instantiated')
+        query = '''select prompt_result from prompt_and_result where user_id = :user_id and id = :request_id'''
+
+        res = self.conn_sync.execute(text(query), {'request_id': request_id, 'user_id': user_id})
+        res = res.fetchone()
+        return res._mapping if res else None
+
+    def insert_additional_analyses_prompt_result_sync(self, request_id: int, additional_analyses_prompt_result: str):
+        if not self.conn_sync:
+            raise Exception('conn_sync object has not been instantiated')
+        
+        status = 'ADDITIONAL ANALYSES PROMPT RESULT RECEIVED'
+        query = '''update prompt_and_result
+                   set additional_analyses_prompt_result = :additional_analyses_prompt_result, status = :status
+                   where id = :request_id'''
+
+        self.conn_sync.execute(text(query) ,{'request_id': request_id, 'additional_analyses_prompt_result': additional_analyses_prompt_result, 
+                                             'status': status})
+        self.conn_sync.commit()
+        
+    async def get_additional_analyses_prompt_result(self, request_id: int, user_id: int):
+        query = '''select additional_analyses_prompt_result from prompt_and_result where user_id = :user_id and id = :request_id'''
+
+        res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
+        res = res.fetchone()
+        return res._mapping if res else None
 class TaskRunTableOperation:
     def __init__(self, conn=None, conn_sync=None):
         self.conn = conn
@@ -216,6 +252,13 @@ class TaskRunTableOperation:
         query = '''select original_common_tasks, common_tasks_w_result from task_run where user_id = :user_id and request_id = :request_id'''
 
         res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        return res._mapping if res else None
+    
+    def get_task_by_id_sync(self, user_id:int, request_id: int):
+        query = '''select original_common_tasks, common_tasks_w_result from task_run where user_id = :user_id and request_id = :request_id'''
+
+        res = self.conn_sync.execute(text(query), {'user_id': user_id, 'request_id': request_id})
         res = res.fetchone()
         return res._mapping if res else None
         

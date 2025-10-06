@@ -4,8 +4,17 @@ import requests
 import time
 import pandas as pd
 import json
+from copy import deepcopy
+from string import Template
+
+# import nltk
+# nltk.download('punkt')
+# nltk.download('averaged_perceptron_tagger_eng')
 
 URL = 'http://localhost:8000'
+
+
+
 
 def submit_login_request(username, password):
     body = {'username': username, 'password': password}
@@ -23,6 +32,20 @@ def show_unauthorized_error_and_redirect_to_login():
     st.error('session expired. please log in again.')
     time.sleep(1)
     st.switch_page('home.py')
+    
+def remove_duplicate_tasks(tasks):
+    seen_steps = set()
+    unique_list = []
+
+    for item in tasks:
+        item = deepcopy(item)
+        steps_value = item['steps']
+
+        if steps_value not in seen_steps:
+            unique_list.append(item)
+            seen_steps.add(steps_value)
+
+    return unique_list
 
 # a decorator that intercepts the 'headers' argument and insert access token
 def include_auth_header(func):
@@ -41,6 +64,15 @@ def include_auth_header(func):
         
         try:
             res = func(*args, **kwargs)
+            
+            if res.status_code == 422:
+                try:
+                    error_details = res.json()
+                    print(error_details)
+                    return
+                except requests.exceptions.JSONDecodeError:
+                    print(res.text)
+                    return
 
             if res.status_code == 401:
                 show_unauthorized_error_and_redirect_to_login()
@@ -70,6 +102,27 @@ def send_tasks_to_process(data_tasks, task_id, headers=None):
     url = f'{URL}/execute_analyses?req_id={task_id}'
     
     res = requests.post(url, data=json.dumps(data_tasks), headers=headers)
+    
+    return res
+
+@include_auth_header
+def make_analysis_request(uploaded_file, model, task_count, headers=None):
+    url = 'http://127.0.0.1:8000/upload_dataset'
+    file = {'file': uploaded_file.getvalue()}
+
+    data = {'model': model, 'analysis_task_count': str(task_count)}
+
+    res = requests.post(url=url, files=file, headers=headers, data=data)
+    
+    return res
+
+@include_auth_header
+def make_additional_analyses_request(model, new_tasks_prompt, request_id, headers=None):
+    url = 'http://127.0.0.1:8000/make_additional_analyses_request'
+
+    data = {'model': model, 'new_tasks_prompt': new_tasks_prompt, 'request_id': request_id}
+
+    res = requests.post(url=url, headers=headers, data=data)
     
     return res
     
@@ -149,7 +202,6 @@ def render_modified_task_box(param_info, all_columns, step_idx, step, step_param
         return [new_value] if isinstance(step[step_param], list) else new_value
     
     elif widget_type == 'text_input':
-        st.markdown('---')
         new_value = st.text_input(
             label=param_info['alias'], 
             key=f'task_{task_idx}_step_{step_idx}_param_{step_param}', 
@@ -157,7 +209,6 @@ def render_modified_task_box(param_info, all_columns, step_idx, step, step_param
         )
         st.warning('Please insert valid values from your selected column.')
         st.warning('If multiple values, separate them with semicolon (;)')
-        st.markdown('---')
         
         return [val.strip() for val in new_value.split(';')]
             
@@ -171,12 +222,100 @@ def render_original_task_expander(task) :
         st.write(f"**Status**: {task_status}")
         st.write(f"**Description**: {task['description']}")
         st.write(f"**Score**: {task['score']}")
-        st.write('\n')
-        st.write('**Steps**')
-        st.code(json.dumps({'steps': task['steps']}, indent=4))
-        st.write('\n')
+        
+        st.write('---')
+        st.write('**Steps:**')
+        
+        for step_idx, step in enumerate(task['steps']):
+            render_task_step(step_idx, step)
+        
+        st.write('---')
         
         if task_status == 'successful':
             st.write('**Result**')
             st.write(pd.DataFrame(task['result']))
-                
+
+def process_step_val(val):
+    if val is None:
+        return '()'
+    if isinstance(val, list):
+        if len(val) > 1:
+            val = [f"**{v}**" for v in val]
+            val = ', '.join(val)
+            val = f'({val})'
+            return val
+        else:
+            val = val[0]
+    
+    return f'**{val}**'
+            
+def render_task_step(step_idx, step):
+    template_str = PARAMS_MAP[step['function']]['template']
+    template = Template(template_str)
+    args = {i: process_step_val(j) for i, j in step.items() if i != 'function'}
+    val = template.substitute(args)
+    val = f'{step_idx+1} - {val}'
+
+    return st.write(val)
+
+def is_valid_sentence_nlp(text):
+    if not isinstance(text, str) or not text:
+        return False
+
+    sentences = sent_tokenize(text) # type: ignore
+    print(sentences)
+    if len(sentences) != 1:
+        return False
+
+    words = word_tokenize(text) # type: ignore
+    tagged_words = pos_tag(words) # type: ignore
+
+    has_verb = any(tag.startswith('VB') for word, tag in tagged_words)
+
+    return has_verb
+
+            
+            
+PARAMS_MAP = {
+    'groupby': {
+        'template': 'Group by column(s) $columns_to_group_by and calculate $calculation of column(s) $columns_to_aggregate',
+        'columns_to_group_by': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
+        'columns_to_aggregate': {'alias': 'Column(s) to aggregate', 'type': 'multiselect'},
+        'calculation': {'alias': 'Calculation', 'type': 'multiselect', 'options': ['mean', 'median', 'min', 'max', 'count', 'size', 'sum']}
+    },
+    
+    'filter': {
+        'template': 'Filter column $column_name where condition $operator $values',
+        'column_name': {'alias': 'Filter column', 'type': 'selectbox'},
+        'operator': {'alias': 'Condition', 'type': 'selectbox', 'options': ['>', '<', '>=', '<=', '==', '!=', 'in', 'between']},
+        'values': {'alias': 'Filter value(s)', 'type': {'numerical': 'number_input', 'text': 'text_input'}}
+    },
+    
+    'get_top_or_bottom_N_entries': {
+        'template': 'Get the $order $number_of_entries entries, sorted by $sort_by_column_name. Return column(s): $return_columns',
+        'sort_by_column_name': {'alias': 'Column to sort by', 'type': 'selectbox'},
+        'order': {'alias': 'Ordering', 'type': 'radio', 'options': ['top', 'bottom']},
+        'number_of_entries': {'alias': 'Number of entries', 'type': 'number_input'},
+        'return_columns': {'alias': 'Column(s) included in result', 'type': 'multiselect'},
+    },
+    
+    'get_proportion': {
+        'template': 'Calculate the proportion/percentage of value(s) $values in column $column_name',
+        'column_name': {'alias': 'Column to get proportion of', 'type': 'selectbox'},
+        'values': {'alias': 'Value(s) to get proportion of', 'type': 'text_input'}
+    },
+    
+    'get_column_statistics': {
+        'template': 'Calculate the statistic ($calculation) for column $column_name',
+        'column_name': {'alias': 'Column to get statistics from', 'type': 'selectbox'},
+        'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['mean', 'median', 'min', 'max', 'count', 'sum']}
+    },
+}
+
+DEFAULT_PARAMS = {
+    'groupby': ['columns_to_group_by', 'columns_to_aggregate'],
+    'filter': ['column_name', 'operator', 'values'],
+    'get_top_or_bottom_N_entries': ['number_of_entries', 'sort_by_column_name', 'order'],
+    'get_proportion': ['column_name', 'values'],
+    'get_column_statistics': ['column_name'],
+}
