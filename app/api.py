@@ -63,7 +63,6 @@ app.add_middleware(LogRequestMiddleware)
 
 @app.get('/')
 async def read_root():
-    logger.error('hello sentry')
     return {'Hello': 'World'}
 
 # to do:
@@ -120,7 +119,7 @@ async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=
     # check if this task was run by the user requesting the task
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
     if task_still_in_initial_request_process:
-        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     data_tasks = data_tasks.model_dump()
@@ -134,28 +133,27 @@ async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=
 async def make_additional_analyses_request(model: str = Form(...), new_tasks_prompt: str = Form(...), request_id: int = Form(...), 
                                            conn=Depends(get_conn), current_user=Depends(get_current_user)):
     
-    
-    additional_analyses_task_count = 5
+    ADDITIONAL_ANALYSES_TASK_COUNT = 5
     user_id = current_user.user_id
     
     prompt_table_ops = PromptTableOperation(conn)
     
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
     if task_still_in_initial_request_process:
-        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
     additional_analyses_prompt_res = await prompt_table_ops.get_additional_analyses_prompt_result(request_id, user_id)
     additional_analyses_prompt_res = additional_analyses_prompt_res['additional_analyses_prompt_result']
     
     if additional_analyses_prompt_res is not None: # if user already run additional analyses on this req_id previously
-        return {'detail': 'can only execute one additional analyses request for one dataset'}
+        raise HTTPException(status_code=400, detail=f"can only execute one additional analyses request for one dataset")
     
     new_tasks_prompt = new_tasks_prompt.split('\n')
 
     parquet_file = f'app/datasets/{request_id}.parquet'
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     
-    _ = chain(get_additional_analyses_prompt_result.s(model, additional_analyses_task_count, new_tasks_prompt, request_id, user_id), # accepts prompt, request_id, cols list, db_url
+    _ = chain(get_additional_analyses_prompt_result.s(model, ADDITIONAL_ANALYSES_TASK_COUNT, new_tasks_prompt, request_id, user_id), # accepts prompt, request_id, cols list, db_url
               data_processing_task.s(run_info, 'additional_analyses_request') # accepts data_tasks (from prev task), run_info dct, run_request
               ).apply_async()
     
@@ -165,17 +163,39 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
     
 
 
-@app.get('/get_task_by_id/{request_id}')
-async def get_task_by_id(request_id: str, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+@app.get('/get_original_tasks_by_id/{request_id}')
+async def get_original_tasks_by_id(request_id: str, conn=Depends(get_conn), current_user=Depends(get_current_user)):
     user_id = current_user.user_id
     request_id = int(request_id)
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
     if task_still_in_initial_request_process:
-        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
     task_run_table_ops = TaskRunTableOperation(conn)
-    res = await task_run_table_ops.get_task_by_id(user_id, request_id)
+    res = await task_run_table_ops.get_original_tasks_by_id(user_id, request_id)
+
+    if not res:
+        raise HTTPException(status_code=404, detail=f"cannot find the requested original tasks")
+
+    return res
+
+
+
+@app.get('/get_modified_tasks_by_id/{request_id}')
+async def get_modified_tasks_by_id(request_id: str, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+    user_id = current_user.user_id
+    request_id = int(request_id)
+
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    if task_still_in_initial_request_process:
+        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
+    
+    task_run_table_ops = TaskRunTableOperation(conn)
+    res = await task_run_table_ops.get_modified_tasks_by_id(user_id, request_id)
+    
+    if not res:
+        raise HTTPException(status_code=404, detail=f"cannot find the requested modified tasks")
 
     return res
 
@@ -186,10 +206,13 @@ async def get_col_info_by_id(request_id: int, conn=Depends(get_conn), current_us
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
     if task_still_in_initial_request_process:
-        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
     task_run_table_ops = TaskRunTableOperation(conn)
     res = await task_run_table_ops.get_columns_info_by_id(user_id, request_id)
+    
+    if not res:
+        raise HTTPException(status_code=404, detail=f"cannot find the requested columns info")
 
     return res
 
@@ -200,11 +223,14 @@ async def get_dataset_snippet_by_id(request_id: int, conn=Depends(get_conn), cur
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
     if task_still_in_initial_request_process:
-        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
     task_run_table_ops = TaskRunTableOperation(conn)
     res = await task_run_table_ops.get_dataset_snippet_by_id(user_id, request_id)
 
+    if not res:
+        raise HTTPException(status_code=404, detail=f"cannot find the requested dataset snippet")
+    
     return res
 
 
@@ -216,7 +242,7 @@ async def get_request_ids(current_user=Depends(get_current_user), conn=Depends(g
     res = await prompt_table_ops.get_request_ids_by_user(user_id)
     
     if not res:
-        return {'detail': 'not authenticated or cannot find any request ids'}
+        raise HTTPException(status_code=404, detail=f"not authenticated or cannot find any request ids")
     
     return {'request_ids': res}
 

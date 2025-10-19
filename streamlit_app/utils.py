@@ -90,8 +90,16 @@ def include_auth_header(func):
     
     
 @include_auth_header
-def get_task_by_id(task_id, headers=None):
-    url = f'{URL}/get_task_by_id/{task_id}'
+def get_original_tasks_by_id(task_id, headers=None):
+    url = f'{URL}/get_original_tasks_by_id/{task_id}'
+    
+    res = requests.get(url, headers=headers)
+    
+    return res
+
+@include_auth_header
+def get_modified_tasks_by_id(task_id, headers=None):
+    url = f'{URL}/get_modified_tasks_by_id/{task_id}'
     
     res = requests.get(url, headers=headers)
     

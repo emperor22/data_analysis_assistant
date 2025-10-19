@@ -1,4 +1,4 @@
-from utils import get_task_by_id, render_original_task_expander, render_task_ids
+from utils import get_original_tasks_by_id, render_original_task_expander, render_task_ids
 import streamlit as st
 import json
 import pandas as pd
@@ -36,7 +36,7 @@ if 'tasks' not in st.session_state:
     st.session_state.tasks = {}
     
 if task_id not in st.session_state.tasks:
-    tasks = get_task_by_id(task_id)
+    tasks = get_original_tasks_by_id(task_id)
     tasks = tasks['original_common_tasks']
     tasks = json.loads(tasks)['original_common_tasks']
     st.session_state.tasks[task_id] = tasks

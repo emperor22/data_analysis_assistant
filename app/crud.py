@@ -285,8 +285,16 @@ class TaskRunTableOperation:
         self.conn_sync.execute(text(query) ,{'request_id': request_id, 'columns_info': columns_info})
         self.conn_sync.commit()
     
-    async def get_task_by_id(self, user_id:int, request_id: int):
-        query = '''select original_common_tasks, common_tasks_w_result from task_run 
+    async def get_original_tasks_by_id(self, user_id:int, request_id: int):
+        query = '''select original_common_tasks from task_run 
+                   where user_id = :user_id and request_id = :request_id'''
+    
+        res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        return res._mapping if res else None
+    
+    async def get_modified_tasks_by_id(self, user_id:int, request_id: int):
+        query = '''select common_tasks_w_result from task_run 
                    where user_id = :user_id and request_id = :request_id'''
     
         res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})

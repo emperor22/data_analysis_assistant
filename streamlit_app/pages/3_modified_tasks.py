@@ -1,6 +1,6 @@
 from utils import (send_tasks_to_process, render_modified_task_box, render_task_step, process_step_val, 
                    PARAMS_MAP, DEFAULT_PARAMS, get_col_info_by_id, get_template_keys_to_be_substituted, 
-                   render_task_ids)
+                   render_task_ids, get_modified_tasks_by_id)
 import streamlit as st
 import json
 from copy import deepcopy
@@ -14,17 +14,11 @@ max_task_count = 30
 
 task_id = render_task_ids()
 
-if 'tasks' not in st.session_state:
-    st.error('you dont have any request.')
-    st.stop()
-
 if 'selected_tasks_to_modify' not in st.session_state or \
     task_id not in st.session_state.selected_tasks_to_modify or \
     len(st.session_state.selected_tasks_to_modify[task_id]) == 0:
         st.error('you need to import some tasks first.')
         st.stop()
-        
-
 
 # initialize 'imported' tracker if not exists        
 if 'imported' not in st.session_state:
@@ -33,7 +27,7 @@ if 'imported' not in st.session_state:
 if task_id not in st.session_state.imported:
     st.session_state.imported[task_id] = False
 
-# initialize 'modified_tasks' list if this is the first import        
+# initialize 'modified_tasks' list if this is the first task import        
 if 'modified_tasks' not in st.session_state:
     st.session_state.modified_tasks = {}
     
@@ -50,6 +44,16 @@ if task_id not in st.session_state.modified_tasks:
     
     st.session_state.modified_tasks[task_id] = imported_tasks
     st.session_state.imported[task_id] = True
+    
+    
+# initialize 'modified_tasks_w_result' in session_state
+if 'modified_tasks_w_result' not in st.session_state:
+    st.session.modified_tasks_w_result = {}
+
+if task_id not in st.session_state.modified_tasks_w_result:
+    st.session_state.modified_tasks_w_result[task_id] = None
+    
+    
 
 
 # need to get this info from db for each request_id
@@ -58,9 +62,7 @@ dataset_cols = json.loads(dataset_cols['columns_info'])
 ALL_COLUMNS = [col['name'] for col in dataset_cols['columns_info']]
 
 
-task_edit_tab, task_overview_tab = st.tabs(['Customize tasks', 'Task overview'])
-
-
+task_edit_tab, task_overview_tab, task_result_tab = st.tabs(['Customize tasks', 'Task overview'])
 
 with task_edit_tab:
     st.subheader('Customize tasks')
