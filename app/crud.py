@@ -83,7 +83,7 @@ class UserTableOperation:
 
         res = await self.conn.execute(text(query), {'username': username})
         res = res.fetchone()
-        return res._mapping['hashed_password'] if res else None
+        return res._mapping.hashed_password if res else None
     
     async def create_user(self, username, email, first_name, last_name, hashed_password):
         query = '''insert into user(username, email, first_name, last_name, hashed_password) values (:username, :email, :first_name, :last_name, :hashed_password)'''
@@ -144,7 +144,7 @@ class PromptTableOperation:
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping if res and res.prompt_result is not None else None
         
     def get_prompt_result_sync(self, request_id: int, user_id: int):
         if not self.conn_sync:
@@ -153,7 +153,7 @@ class PromptTableOperation:
 
         res = self.conn_sync.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping if res and res.prompt_result is not None else None
 
     def insert_additional_analyses_prompt_result_sync(self, request_id: int, additional_analyses_prompt_result: str):
         if not self.conn_sync:
@@ -171,7 +171,7 @@ class PromptTableOperation:
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping if res and res.additional_analyses_prompt_result is not None else None
         
     def change_request_status_sync(self, request_id, status):
         if not self.conn_sync:
@@ -189,14 +189,14 @@ class PromptTableOperation:
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping if res and res.status is not None else None
     
     async def get_dataset_snippet_by_id(self, request_id: int, user_id: int):
         query = '''select dataset_cols from prompt_and_result where user_id = :user_id and id = :request_id'''
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping if res and res.dataset_cols is not None else None
     
     async def get_request_ids_by_user(self, user_id: int):
         query = '''select id, filename, status from prompt_and_result where user_id = :user_id'''
@@ -291,7 +291,7 @@ class TaskRunTableOperation:
     
         res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping if res and res.original_common_tasks is not None else None
     
     async def get_modified_tasks_by_id(self, user_id:int, request_id: int):
         query = '''select common_tasks_w_result from task_run 
@@ -299,7 +299,8 @@ class TaskRunTableOperation:
     
         res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping if res and res.common_tasks_w_result is not None else None
+
     
     async def get_columns_info_by_id(self, user_id:int, request_id: int):
         query = '''select columns_info from task_run 

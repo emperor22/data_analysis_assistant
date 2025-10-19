@@ -1,6 +1,6 @@
 from utils import (send_tasks_to_process, render_modified_task_box, render_task_step, process_step_val, 
                    PARAMS_MAP, DEFAULT_PARAMS, get_col_info_by_id, get_template_keys_to_be_substituted, 
-                   render_task_ids, get_modified_tasks_by_id)
+                   render_task_ids, get_modified_tasks_by_id, render_original_task_expander)
 import streamlit as st
 import json
 from copy import deepcopy
@@ -45,15 +45,6 @@ if task_id not in st.session_state.modified_tasks:
     st.session_state.modified_tasks[task_id] = imported_tasks
     st.session_state.imported[task_id] = True
     
-    
-# initialize 'modified_tasks_w_result' in session_state
-if 'modified_tasks_w_result' not in st.session_state:
-    st.session.modified_tasks_w_result = {}
-
-if task_id not in st.session_state.modified_tasks_w_result:
-    st.session_state.modified_tasks_w_result[task_id] = None
-    
-    
 
 
 # need to get this info from db for each request_id
@@ -62,7 +53,7 @@ dataset_cols = json.loads(dataset_cols['columns_info'])
 ALL_COLUMNS = [col['name'] for col in dataset_cols['columns_info']]
 
 
-task_edit_tab, task_overview_tab, task_result_tab = st.tabs(['Customize tasks', 'Task overview'])
+task_edit_tab, task_overview_tab, task_result_tab = st.tabs(['Customize tasks', 'Task overview', 'Task result'])
 
 with task_edit_tab:
     st.subheader('Customize tasks')
@@ -232,4 +223,21 @@ with task_overview_tab:
                     'common_column_combination': []}
     
         res = send_tasks_to_process(data_tasks, task_id)
+        
+        get_modified_tasks_by_id.clear()
+        
         st.write(res)
+        
+        
+with task_result_tab:
+    modified_tasks_w_result = get_modified_tasks_by_id(task_id)
+
+    if not modified_tasks_w_result:
+        st.error('you need to run the customized tasks first or the result is still being processed')
+        st.stop()
+
+    modified_tasks_w_result = modified_tasks_w_result['common_tasks_w_result']
+    modified_tasks_w_result = json.loads(modified_tasks_w_result)['common_tasks_w_result']
+    
+    for task_idx, task in enumerate(modified_tasks_w_result):
+        render_original_task_expander(task, task_idx)

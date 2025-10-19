@@ -76,6 +76,9 @@ def include_auth_header(func):
 
             if res.status_code == 401:
                 show_unauthorized_error_and_redirect_to_login()
+                
+            if res.status_code == 404:
+                return None
 
             elif res.status_code == 200:
                 return res.json()
@@ -97,6 +100,7 @@ def get_original_tasks_by_id(task_id, headers=None):
     
     return res
 
+@st.cache_data
 @include_auth_header
 def get_modified_tasks_by_id(task_id, headers=None):
     url = f'{URL}/get_modified_tasks_by_id/{task_id}'
@@ -123,7 +127,7 @@ def get_task_ids_by_user(headers=None):
 def render_task_ids():
     task_ids = get_task_ids_by_user()
     
-    if not 'request_ids' in task_ids:
+    if not task_ids:
         st.error('cannot find request ids')
         st.stop()
         
@@ -289,10 +293,10 @@ def render_modified_task_box(task_id, param_info, all_columns, step_idx, step, s
         return [val.strip() for val in new_value.split(';')]
             
     
-def render_original_task_expander(task) :   
+def render_original_task_expander(task, task_idx) :   
     task_status = task['status']
     status_in_label = f' ({task_status.split()[0].upper()})' if task_status.startswith('failed') else ''
-    expander_label = f"{task['task_id']} - {task['name']}{status_in_label}"
+    expander_label = f"{task_idx+1} - {task['name']}{status_in_label}"
     
     with st.expander(expander_label):
         st.write(f"**Status**: {task_status}")

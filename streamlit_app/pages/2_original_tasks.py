@@ -36,10 +36,18 @@ if 'tasks' not in st.session_state:
     st.session_state.tasks = {}
     
 if task_id not in st.session_state.tasks:
+    st.session_state.tasks[task_id] = []
+    
     tasks = get_original_tasks_by_id(task_id)
-    tasks = tasks['original_common_tasks']
-    tasks = json.loads(tasks)['original_common_tasks']
-    st.session_state.tasks[task_id] = tasks
+    
+    if tasks:
+        tasks = tasks['original_common_tasks']
+        tasks = json.loads(tasks)['original_common_tasks']
+        st.session_state.tasks[task_id] = tasks
+
+if not st.session_state.tasks[task_id]:
+    st.error('the result for the original tasks is still being processed')
+    st.stop()
 
 if 'selected_tasks_to_modify' not in st.session_state:
     st.session_state.selected_tasks_to_modify = {}
@@ -66,7 +74,7 @@ if st.button('Refresh task lists', help='This button is useful for when you run 
     st.rerun()
 
 st.write('')
-for task in st.session_state.tasks[task_id]:
+for task_idx, task in enumerate(st.session_state.tasks[task_id]):
     
     if task['task_id'] not in all_task_ids:
         continue
@@ -75,7 +83,7 @@ for task in st.session_state.tasks[task_id]:
     id_ = task['task_id']
     
     with col1:
-        render_original_task_expander(task)
+        render_original_task_expander(task, task_idx)
     
     with col2:
         if not id_ in st.session_state.selected_tasks_to_modify[task_id]:
