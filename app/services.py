@@ -13,13 +13,15 @@ import ast
 import json
 from typing import Literal
 
-from app.crud import TaskRunTableOperation
-from app.schemas import DataTasks
+from app.crud import TaskRunTableOperation, PromptTableOperation
+from app.schemas import DataTasks, TaskStatus
 from app.data_transform_utils import (
     groupby_func, filter_func, get_proportion_func, get_column_statistics_func,
     get_top_or_bottom_n_entries_func ,apply_map_range_func, apply_map_func, 
-    apply_date_op_func, apply_math_op_func, get_column_combination_func
+    apply_date_op_func, apply_math_op_func, get_column_combination_func, 
+    get_column_properties, col_transform_and_combination_parse_helper
 )
+from app.logger import logger
 
 
 ##### CONFIG #####
@@ -28,10 +30,23 @@ N_ROWS_READ_UPLOAD_FILE = 100
 
 ##################
 
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return round(float(obj), 3)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+
+
+
 class FileReader(ABC):
     def __init__(self, upload_file: UploadFile):
         self.file_content = upload_file.file.read()
         self.filename = upload_file.filename
+        print(self.filename)
         self.df = None
         
     def get_dataframe_dict(self):
@@ -53,8 +68,10 @@ class FileReader(ABC):
         '''A method to validate the dataframe. Returns True if passes all the checks else returns False'''
         return True
     
+    @logger.catch
     def _clean_dataset(self):
         df = self.df.copy()
+        CONV_SUCCESS_RATE = 0.5
 
         # for column names, strip, make lowercase, replace space and dash with _, and remove non-alphanum characters
         df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_', regex=False).str.replace('-', '_') \
@@ -62,16 +79,33 @@ class FileReader(ABC):
         
         # cleaning column values
         for col in df.columns:
+            temp_series_nonull_idx = df[col].dropna().index # for later when getting conversion success rate only for non-null rows
             # assume column is numeric and try to cast it to numeric type after cleaning
             if df[col].dtype == 'object':
-                temp_series = pd.to_numeric(df[col].astype(str).str.replace(r'[^0-9.\-]', '', regex=True), errors='coerce')
-
-                numeric_success_rate = 1 - (temp_series.isnull().sum() / len(temp_series))
                 
-                if numeric_success_rate > 0.5: # more than 50% of col values are successfully converted to numeric, so keep it 
-                    df[col] = temp_series
+                # check if datetime
+                date_col_contains = ['date', 'timestamp', 'updated_at', 'created_at']
+                if any(s in col for s in date_col_contains):
+                    
+                    temp_series_dt = pd.to_datetime(df[col], errors='coerce')
+                    temp_series_dt_nonull = temp_series_dt[temp_series_dt.index.isin(temp_series_nonull_idx)]
+                    datetime_success_rate = 1 - (temp_series_dt_nonull.isna().sum() / len(temp_series_dt_nonull))
+                    
+                    if datetime_success_rate > CONV_SUCCESS_RATE:
+                        df[col] = temp_series_dt
+                        continue
+
+                # check if numeric
+                temp_series_numeric = pd.to_numeric(df[col].astype(str).str.replace(r'[^a-zA-Z0-9\s.]', '', regex=True), errors='coerce')
+                temp_series_numeric_nonull = temp_series_numeric[temp_series_numeric.index.isin(temp_series_nonull_idx)]
+
+                numeric_success_rate = 1 - (temp_series_numeric_nonull.isna().sum() / len(temp_series_numeric_nonull))
+                
+                if numeric_success_rate > CONV_SUCCESS_RATE: # more than x % of col values are successfully converted to numeric, so keep it 
+                    df[col] = temp_series_numeric
                 else: # col is probably a string column
-                    df[col] = df[col].astype(str).str.strip().str.lower().replace('', np.nan) # clean the string column
+                    null_string_replace = ['', 'nan', None, 'null', 'n/a', 'na', 'none']
+                    df[col] = df[col].astype(str).str.strip().str.lower().replace(null_string_replace, np.nan) # clean the string column
             else:
                 continue # column is already numeric type and doesnt require cleaning
                 
@@ -119,8 +153,11 @@ class DataAnalysisProcessor:
         self.user_id = run_info['user_id']
         
         self.df: pd.DataFrame = pd.read_parquet(parquet_file)
+        self.original_columns = self.df.columns.tolist()
         
         self.data_tasks = data_tasks
+        
+        self.final_dataset_snippet = None
         
         self.common_tasks_only = False
         
@@ -147,13 +184,72 @@ class DataAnalysisProcessor:
             }
         
     
-    def process_all_tasks(self):
+    def _process_columns_info(self):
+        df = self.df.copy()
+        
+        added_columns = list(set(df.columns) - set(self.original_columns))
+        numerical_columns = df.select_dtypes(include=[np.number])
+        date_cols = df.select_dtypes(include=[np.datetime64])
+        
+        columns_info = [col.model_dump() for col in self.data_tasks.columns]
+        col_combination = [col.model_dump() for col in self.data_tasks.common_column_combination]
+        col_transform = [col.model_dump() for col in self.data_tasks.common_column_cleaning_or_transformation]
+        
+        col_info_lst = []
+        
+        for col in df.columns:
+            series = df[col]
+            
+            col_info_dct = {'name': col}
+            col_info_dct['source'] = 'original' if col not in added_columns else 'added'
+            
+            # get llm resp col info if in original columns
+            if col not in added_columns: 
+                col_info_dct['inferred_info_prompt_res'] = next(dct for dct in columns_info if dct['name'] == col)
+            else:
+                col_combination_names = [col['name'] for col in col_combination]
+                col_transform_names = [col['name'] for col in col_transform]
+                
+                if col in col_combination_names:
+                    llm_resp_col_info = next(dct for dct in col_combination if dct['name'] == col)
+                    llm_resp_col_info = col_transform_and_combination_parse_helper(llm_resp_col_info, is_col_combination=True)
+                    col_info_dct['inferred_info_prompt_res'] = llm_resp_col_info
+                    
+                elif col in col_transform_names:
+                    llm_resp_col_info = next(dct for dct in col_transform if dct['name'] == col)
+                    llm_resp_col_info = col_transform_and_combination_parse_helper(llm_resp_col_info, is_col_combination=False)
+                    col_info_dct['inferred_info_prompt_res'] = llm_resp_col_info
+                    
+                else:
+                    col_info_dct['inferred_info_prompt_res'] = {}
+                    
+            
+            is_numeric_column = col in numerical_columns
+            is_datetime_column = col in date_cols
+            col_properties = get_column_properties(series, is_numeric_column, is_datetime_column)
+            
+            col_info_dct.update(col_properties)
+            
+            col_info_lst.append(col_info_dct)
+            
+        col_info = {'columns_info': col_info_lst}
+        
+        self.task_run_table_ops.update_columns_info_sync(request_id=self.request_id, columns_info=json.dumps(col_info, cls=NpEncoder))
+
+    def process_all_tasks(self):       
         if not self.common_tasks_only:
             self._process_column_transforms()
             self._process_column_combinations()
-            self.df.to_parquet(f'app/datasets/{self.request_id}.parquet', index=False)
+            self.df.to_parquet(f'app/datasets/{self.request_id}.parquet', index=False) # update saved dataset with added columns
         
         self._process_common_tasks()
+        
+        if self.run_type == 'first_run_after_request':
+            self._process_columns_info()
+            self.final_dataset_snippet = self.df.iloc[:5].to_csv(index=False)
+            
+    def get_final_dataset_snippet(self):
+        return self.final_dataset_snippet
     
     def _process_common_tasks(self):
         common_tasks = self.data_tasks.common_tasks
@@ -191,6 +287,8 @@ class DataAnalysisProcessor:
             if error_steps:
                 task_modified['status'] = '; '.join(error_steps)
                 task_modified['result'] = {}
+                
+                logger.warning(f'some task from common_tasks failed: run_type {self.run_type}, request_id {self.request_id}, task_id {task.task_id}, errors ({"; ".join(error_steps)})')
             else:
                 task_modified['status'] = 'successful'
                 task_modified['result'] = tmp.to_dict('list')
@@ -232,6 +330,9 @@ class DataAnalysisProcessor:
                 
             except Exception as e:
                 tasks_status[task['name']] = f'failed. error: {e.args}'
+                run = 'column_combinations' if is_col_combination_task else 'column_transforms'
+                logger.warning(f'some task from {run} failed: run_type {self.run_type}, request_id {self.request_id}, errors ({str(e)})')
+
                 continue
             
         self.df = tmp.copy()
@@ -268,6 +369,7 @@ def insert_prompt_context(prompt_file, context):
     
     return template.substitute(context)
 
+@logger.catch
 def get_prompt_result(prompt, model):
     key = 'AIzaSyB0Kbhw7DpGlA_tAolL4tGdRajI9k4F_s4'
     url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
@@ -283,15 +385,58 @@ def get_prompt_result(prompt, model):
         
     return r.json()
 
+@logger.catch
 def process_llm_api_response(resp: dict):
     prompt_resp = resp['candidates'][0]['content']['parts'][0]['text']
     clean_json = re.search(r"```json\s*(.*?)\s*```", prompt_resp, re.DOTALL)
     clean_json = clean_json.group(1).strip()
+    
     data = json.loads(clean_json)
     
     # prompt_token_count = resp['usage_metadata']['promptTokenCount']
     # total_token_count = resp['usage_metadata']['totalTokenCount']
     
     return data
+
+def cleanup_agg_col_names(resp_pt_2, resp_pt_1):
+    
+    json_str = json.dumps(resp_pt_2)
+    
+    def remove_suffix(s):
+        return '_'.join(s.split('_')[:-1])
+    
+    resp_pt_1 = resp_pt_1
+    
+    mrg_lst = [*resp_pt_1['columns'], *resp_pt_1['common_column_combination'], *resp_pt_1['common_column_cleaning_or_transformation']]
+    original_columns = {i['name'] for i in mrg_lst}
+    
+    aggs = ['mean', 'median', 'min', 'max', 'count', 'size', 'sum']
+    pattern = r'"([^"]*_(?:{}))"'.format('|'.join(aggs))
+    
+    cols_to_clean = re.findall(pattern, json_str)
+    cols_to_clean = list(set(cols_to_clean))
+    
+    replace_dct = {}
+    
+    for col in cols_to_clean:
+        if remove_suffix(col) in original_columns:
+            replace_dct[col] = remove_suffix(col)
+    
+    for col_to_replace, replace in replace_dct.items():
+        json_str = json_str.replace(col_to_replace, replace)
+        
+    return json.loads(json_str)
+
+async def is_task_invalid_or_still_processing(conn, request_id, user_id):
+    prompt_table_ops = PromptTableOperation(conn)
+    
+    req_status = await prompt_table_ops.get_request_status(request_id=request_id, user_id=user_id)
+    exclude_status = (TaskStatus.waiting_for_initial_request_prompt.value, TaskStatus.initial_request_prompt_received.value, 
+                      TaskStatus.doing_initial_tasks_run.value)
+    
+    if not req_status or (req_status and req_status['status'] in exclude_status):
+        return True
+    return False
+    
 
 

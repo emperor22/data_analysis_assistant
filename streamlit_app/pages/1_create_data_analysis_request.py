@@ -34,7 +34,7 @@ with first_req_tab:
 
     with analysis_req_form:
         file = st.file_uploader('Select your dataset file', accept_multiple_files=False, type=['csv'])
-        model = st.selectbox('Select model', ['gemma-3-27b-it', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'])
+        model = st.selectbox('Select model', ['gemini-2.5-flash', 'gemma-3-27b-it', 'gemini-2.5-flash-lite'])
         task_count = st.selectbox('Select number of analyses to output', [10, 20])
         
         if st.form_submit_button('Create Analysis Request'):

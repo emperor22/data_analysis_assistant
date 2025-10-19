@@ -1,245 +1,154 @@
 import streamlit as st
 import pandas as pd
+import json
 
-columns_data  =[
-        {
-            "name": "id",
-            "classification": "Identifier",
-            "confidence_score": "high",
-            "data_type": "integer",
-            "type": "Numerical",
-            "unit": "",
-            "expected_values": [
-                "87023",
-                "1077501",
-                "1077430",
-                "1077175",
-                "1076863"
-            ]
-        },
-        {
-            "name": "loan_amnt",
-            "classification": "Metric",
-            "confidence_score": "high",
-            "data_type": "integer",
-            "type": "Numerical",
-            "unit": "USD",
-            "expected_values": [
-                "2400-15000"
-            ]
-        },
-        {
-            "name": "term",
-            "classification": "Dimensional",
-            "confidence_score": "high",
-            "data_type": "integer",
-            "type": "Categorical",
-            "unit": "months",
-            "expected_values": [
-                "36",
-                "60"
-            ]
-        },
-        {
-            "name": "int_rate",
-            "classification": "Metric",
-            "confidence_score": "high",
-            "data_type": "float",
-            "type": "Numerical",
-            "unit": "percent",
-            "expected_values": [
-                "7.51-15.96"
-            ]
-        },
-        {
-            "name": "installment",
-            "classification": "Metric",
-            "confidence_score": "high",
-            "data_type": "float",
-            "type": "Numerical",
-            "unit": "USD",
-            "expected_values": [
-                "59.83-368.45"
-            ]
-        },
-        {
-            "name": "home_ownership",
-            "classification": "Dimensional",
-            "confidence_score": "high",
-            "data_type": "string",
-            "type": "Categorical",
-            "unit": "",
-            "expected_values": [
-                "rent",
-                "mortgage",
-                "own",
-                "other",
-                "none"
-            ]
-        },
-        {
-            "name": "annual_inc",
-            "classification": "Metric",
-            "confidence_score": "high",
-            "data_type": "float",
-            "type": "Numerical",
-            "unit": "USD",
-            "expected_values": [
-                "12252.0-80000.0"
-            ]
-        },
-        {
-            "name": "verification_status",
-            "classification": "Dimensional",
-            "confidence_score": "high",
-            "data_type": "string",
-            "type": "Categorical",
-            "unit": "",
-            "expected_values": [
-                "not verified",
-                "verified",
-                "source verified"
-            ]
-        },
-        {
-            "name": "issue_d",
-            "classification": "Temporal",
-            "confidence_score": "medium",
-            "data_type": "integer",
-            "type": "Numerical",
-            "unit": "months",
-            "expected_values": [
-                "-11",
-                "-10",
-                "-9",
-                "-8",
-                "-7"
-            ]
-        },
-        {
-            "name": "loan_status",
-            "classification": "Dimensional",
-            "confidence_score": "high",
-            "data_type": "string",
-            "type": "Categorical",
-            "unit": "",
-            "expected_values": [
-                "fully paid",
-                "charged off",
-                "current"
-            ]
-        },
-        {
-            "name": "purpose",
-            "classification": "Dimensional",
-            "confidence_score": "high",
-            "data_type": "string",
-            "type": "Categorical",
-            "unit": "",
-            "expected_values": [
-                "debt_consolidation",
-                "credit_card",
-                "other",
-                "home_improvement",
-                "major_purchase"
-            ]
-        },
-        {
-            "name": "total_pymnt",
-            "classification": "Metric",
-            "confidence_score": "high",
-            "data_type": "float",
-            "type": "Numerical",
-            "unit": "USD",
-            "expected_values": [
-                "0.0-12231.89"
-            ]
-        }
-    ]
+from io import StringIO
+
+from utils import get_col_info_by_id, get_dataset_snippet_by_id, render_task_ids
+
+st.markdown(
+    """
+<style>
+[data-testid="stMetricValue"] {
+    font-size: 22px;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+task_id = render_task_ids()
 
 
-df = pd.DataFrame(columns_data)
+col_info = get_col_info_by_id(task_id=task_id)
+col_info = json.loads(col_info['columns_info'])
+col_info = col_info['columns_info']
 
-# Simplify 'expected_values' for compact display
-def format_expected_values(values):
-    if not values:
-        return "N/A"
-    if len(values) == 1 and '-' in str(values[0]):
-        return f"Range: {values[0]}"
-    if len(values) <= 3:
-        return ", ".join(values)
-    return f"{len(values)} distinct values (e.g., {values[0]}, {values[1]}, ...)"
 
-df['Expected Values'] = df['expected_values'].apply(format_expected_values)
-df['Unit'] = df['unit'].apply(lambda x: x if x else 'N/A')
+data_snippet = get_dataset_snippet_by_id(task_id=task_id)
+data_snippet = data_snippet['final_dataset_snippet']
 
-# Rename and reorder columns for clarity
-df = df.rename(columns={
-    'name': 'Column Name',
-    'classification': 'Classification',
-    'confidence_score': 'Confidence',
-    'data_type': 'Data Type',
-    'type': 'Type Group'
-})
+st.subheader('Dataset Snippet')
+st.write(pd.read_csv(StringIO(data_snippet)))
+st.write('')
 
-display_df = df[['Column Name', 'Classification', 'Confidence', 'Type Group', 'Data Type', 'Unit', 'Expected Values']].set_index('Column Name')
+st.subheader('Columns overview')
+st.write('')
 
 
 
-transposed_df = display_df.T
+search_col = None
+if st.checkbox('Search column'):
+    col_names = [i['name'] for i in col_info]
+    search_col = st.selectbox('Enter column name', options=[''] + col_names)
+    
+    if search_col:
+        col_info = [i for i in col_info if i['name'] == search_col]
 
-def style_confidence_row(s):
-    # s is a Series, where index is 'Column Name'
-    def get_color(val):
-        if val == 'high':
-            return 'background-color: #d4edda; color: #155724; font-weight: bold; border-radius: 4px; padding: 2px 5px;' # Green
-        elif val == 'medium':
-            return 'background-color: #fff3cd; color: #856404; font-weight: bold; border-radius: 4px; padding: 2px 5px;' # Yellow
-        else:
-            return ''
-
-    if s.name == 'Confidence':
-        return [get_color(val) for val in s]
-    return [''] * len(s)
-
-def style_type_group_row(s):
-    def get_color(val):
-        if val == 'Numerical':
-            return 'background-color: #e0f7fa; color: #006064; font-weight: bold; border-radius: 4px; padding: 2px 5px;' # Cyan/Blue
-        elif val == 'Categorical':
-            return 'background-color: #ede7f6; color: #4527a0; font-weight: bold; border-radius: 4px; padding: 2px 5px;' # Purple
-        else:
-            return ''
+st.write('')
+for col_info in col_info:
+    col_name = col_info['name']
+    source = col_info['source']
+    source_expander_suffix = '' if source == 'original' else f' | **DERIVED**'
+    
+    with st.expander(f"{col_name}{source_expander_suffix}", expanded=False):
+        
+        inf_res = col_info['inferred_info_prompt_res']
+        
+        if source == 'original':
+            st.subheader("Inferred Column Information")
+            # Display basic inferred info in columns for readability
+            col1, col2, col3 = st.columns(3)
             
-    if s.name == 'Type Group':
-        return [get_color(val) for val in s]
-    return [''] * len(s)
-    
-def general_styling_transposed(s):
-    return ['text-align: left; vertical-align: middle; white-space: normal;'] * len(s)
+            with col1:
+                st.metric("Classification", inf_res.get('classification', 'N/A'))
+                st.metric("Data Type", inf_res.get('data_type', 'N/A'))
+            
+            with col2:
+                st.metric("Type", inf_res.get('type', 'N/A'))
+                st.metric("Confidence", inf_res.get('confidence_score', 'N/A').title())
+            
+            with col3:
+                unit = inf_res.get('unit', '')
+                st.metric("Unit", unit if unit else "None")
+        
+        if 'operation' in inf_res:
+            st.write('')
+            st.write('Description:')
+            st.write(inf_res.get('description', ''))
+            st.write('Formula:')
+            st.code(inf_res.get('formula', ''), language='text')
+        
+        with st.expander("Detailed Statistics", expanded=False):
+            props = col_info['type_dependent_properties']
+            datatype = props['datatype']
+            is_categorical = props['is_categorical']
+            
+            # Common properties
+            col_a, col_b, col_c = st.columns(3)
+            
+            with col_a:
+                st.metric("Missing Values", f"{col_info['missing_count']:,} ({col_info['missing_value_ratio']:.1%})")
+            
+            with col_b:
+                st.metric("Unique Values", f"{col_info['unique_count']:,} ({col_info['uniqueness_ratio']:.1%})")
+            
+            with col_c:
+                is_cat = "Yes" if props.get('is_categorical', False) else "No"
+                st.metric("Categorical?", is_cat)
+            
+            if datatype == 'numerical':
+                st.subheader("Numerical Properties")
+                
+                col1, col2, col3 = st.columns(3)
 
-styled_transposed_df = transposed_df.style.apply(
-    style_confidence_row, axis=1
-).apply(
-    style_type_group_row, axis=1
-).apply(
-    general_styling_transposed, axis=1 # Apply general styling row-wise
-).set_table_styles([
-    {'selector': 'th.col_heading', 'props': [
-        ('font-size', '14px'), 
-        ('text-align', 'center'), 
-        ('background-color', '#f0f2f6')
-    ]},
-    
-    {'selector': 'th.row_heading', 'props': [
-        ('font-size', '14px'), 
-        ('text-weight', 'bold'),
-        ('text-align', 'left'),
-        ('background-color', '#f0f2f6')
-    ]},
-    
-    {'selector': 'td', 'props': [('font-size', '13px')]},
-])
-
-
-st.dataframe(styled_transposed_df, use_container_width=True, height=280)
+                with col1:
+                    st.metric("Min", f"{props['min_value']:.2f}")
+                    st.metric("Max", f"{props['max_value']:.2f}")
+                
+                with col2:
+                    st.metric("Mean", f"{props['mean_value']:.2f}")
+                    st.metric("Median", f"{props['median_value']:.2f}")
+                
+                with col3:
+                    st.metric("Std Dev", f"{props['std']:.2f}")
+                    skew = props['skewness']
+                    st.metric("Skewness", f"{skew:.2f}")
+                
+                # Quartiles
+                q25, q75 = props['q_25th'], props['q_75th']
+                st.write(f"**IQR:** {q25:.2f} - {q75:.2f}")
+            
+            elif datatype == 'string':
+                st.subheader("String Properties")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric("Max Length", props['max_length'])
+                
+                with col2:
+                    st.metric("Avg Length", f"{props['mean_length']:.1f}")
+                    
+            elif datatype == 'datetime':
+                st.subheader('Datetime Properties')
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric('Min. date', props['date_min'])
+                
+                with col2:
+                    st.metric('Max. date', props['date_max'])
+                    
+                with col3:
+                    st.metric('Date range (days)', props['range_days'])
+                    
+            common_data = []
+            for val, freq in props['most_common_5_values'].items():
+                common_data.append({
+                    'Value': f"{val}",
+                    'Frequency (%)': f"{freq:.1%}"
+                })
+            st.subheader("Top 5 Most Common Values")
+            st.table(common_data)

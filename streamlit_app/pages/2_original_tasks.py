@@ -1,13 +1,17 @@
-from utils import get_task_by_id, render_original_task_expander
+from utils import get_task_by_id, render_original_task_expander, render_task_ids
 import streamlit as st
 import json
 import pandas as pd
 
 cols_per_row = 1
 
-task_id = 1 # this should be selectable with a selectbox with this format: 'req_id - dataset_name - date'
+task_id = render_task_ids()
 
-score_threshold = st.multiselect('Select scores', ['low', 'medium', 'high'], default=['low', 'medium', 'high'])
+score_threshold = ['low', 'medium', 'high']
+if st.sidebar.checkbox('Filter score'):
+    score_threshold = st.sidebar.multiselect('Select scores', ['low', 'medium', 'high'], default=['low', 'medium', 'high'])
+    
+show_failed_task = st.sidebar.checkbox('Show failed tasks')
 
 
 
@@ -44,22 +48,29 @@ if not task_id in st.session_state.selected_tasks_to_modify:
     st.session_state.selected_tasks_to_modify[task_id] = []
 
 
+all_task_ids = [task['task_id'] for task in st.session_state.tasks[task_id] if task['score'] in score_threshold]
 
-
-all_task_ids = [task['task_id'] for task in st.session_state.tasks[task_id]]
 
 if st.session_state.selected_tasks_to_modify[task_id] != sorted(all_task_ids):
     if st.button('Import all tasks'):
-        st.session_state.selected_tasks_to_modify[task_id] = [task['task_id'] for task in st.session_state.tasks[task_id]]
+        st.session_state.selected_tasks_to_modify[task_id] = all_task_ids
         st.rerun()
 else:
     if st.button('Un-import all tasks'):
         st.session_state.selected_tasks_to_modify[task_id] = []
         st.rerun()
 
-st.write(f'Selected tasks: {sorted(st.session_state.selected_tasks_to_modify[task_id])}')
+st.write('')
+if st.button('Refresh task lists', help='This button is useful for when you run additional analyses and the new tasks have not appeared'):
+    del st.session_state.tasks[task_id]
+    st.rerun()
 
+st.write('')
 for task in st.session_state.tasks[task_id]:
+    
+    if task['task_id'] not in all_task_ids:
+        continue
+    
     col1, col2 = st.columns([3, 1])
     id_ = task['task_id']
     

@@ -59,7 +59,7 @@ For each column, output:
 
 2. Common Column Combination
 
-- Suggest 1–3 new metrics by combining existing columns.
+- Suggest maximum 5 new metrics by combining existing columns.
 - Only use Metric or Dimensional columns.
 - Expression must be Pandas-eval safe (+, -, *, /, **).
 - Ensure referenced columns exist.
@@ -77,7 +77,7 @@ Example:
 
 3. Common Column Cleaning or Transformation
 
-- Suggest 3–5 new or cleaned columns.
+- Suggest maximum 5 new or cleaned columns.
 - Must use the correct transformation type:
 
 **Supported Transformation Types**
@@ -141,7 +141,7 @@ Final output JSON schema:
     {
       "name": "string",
       "classification": "string",
-      "confidence_score": "float",
+      "confidence_score": "string",
       "data_type": "string",
       "type": "string",
       "unit": "string",

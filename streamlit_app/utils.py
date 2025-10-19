@@ -5,7 +5,7 @@ import time
 import pandas as pd
 import json
 from copy import deepcopy
-from string import Template
+from string import Template, Formatter
 
 # import nltk
 # nltk.download('punkt')
@@ -97,9 +97,65 @@ def get_task_by_id(task_id, headers=None):
     
     return res
 
+def is_task_still_processing(status):
+    processing_status = ('GETTING INITIAL REQUEST PROMPT RESULT', 'RUNNING INITIAL ANALYSES TASKS', 
+                         'INITIAL REQUEST PROMPT RESULT RECEIVED')
+    
+    return status in processing_status
+
+@st.cache_data
+@include_auth_header
+def get_task_ids_by_user(headers=None):
+    url = f'{URL}/get_request_ids'
+    
+    res = requests.get(url, headers=headers) # result is [task_id, filename, status]
+    
+    return res
+
+def render_task_ids():
+    task_ids = get_task_ids_by_user()
+    
+    if not 'request_ids' in task_ids:
+        st.error('cannot find request ids')
+        st.stop()
+        
+    task_ids = [i[0] for i in task_ids['request_ids'] if not is_task_still_processing(i[2])] # get first value which is the task id
+    col1, col2 = st.columns([12, 1])
+    with col1:
+        task_ids_select = st.selectbox('Select Task ID', options=[''] + task_ids, key='task_id_select')
+    with col2:
+        if st.button('⟳'):
+            get_task_ids_by_user.clear()
+            st.rerun()
+    
+    if not task_ids_select:
+        st.stop()
+    
+    return task_ids_select
+    
+
+@include_auth_header
+@st.cache_data
+def get_col_info_by_id(task_id, headers=None):
+    url = f'{URL}/get_col_info_by_id/{task_id}'
+    
+    res = requests.get(url, headers=headers)
+    
+    return res
+
+@include_auth_header
+@st.cache_data
+def get_dataset_snippet_by_id(task_id, headers=None):
+    url = f'{URL}/get_dataset_snippet_by_id/{task_id}'
+    
+    res = requests.get(url, headers=headers)
+    
+    return res
+
+
 @include_auth_header
 def send_tasks_to_process(data_tasks, task_id, headers=None):
-    url = f'{URL}/execute_analyses?req_id={task_id}'
+    url = f'{URL}/execute_analyses?request_id={task_id}'
     
     res = requests.post(url, data=json.dumps(data_tasks), headers=headers)
     
@@ -108,7 +164,7 @@ def send_tasks_to_process(data_tasks, task_id, headers=None):
 @include_auth_header
 def make_analysis_request(uploaded_file, model, task_count, headers=None):
     url = 'http://127.0.0.1:8000/upload_dataset'
-    file = {'file': uploaded_file.getvalue()}
+    file = {'file': (uploaded_file.name, uploaded_file.getvalue())}
 
     data = {'model': model, 'analysis_task_count': str(task_count)}
 
@@ -125,9 +181,15 @@ def make_additional_analyses_request(model, new_tasks_prompt, request_id, header
     res = requests.post(url=url, headers=headers, data=data)
     
     return res
-    
 
-def render_modified_task_box(param_info, all_columns, step_idx, step, step_param, task_idx):
+def is_numerical(s):
+    try:
+        _ = float(s)
+        return True
+    except ValueError:
+        return False
+
+def render_modified_task_box(task_id, param_info, all_columns, step_idx, step, step_param, task_idx):
     '''
     Arguments:
     param_info -> from PARAMS_MAP, obtained from function_name. to get alias, widget type, and options for widget
@@ -140,8 +202,8 @@ def render_modified_task_box(param_info, all_columns, step_idx, step, step_param
     
     widget_type = param_info['type']
     
-    value = step[step_param]
-    
+    value = step.get(step_param, [''])
+
     if widget_type != 'multiselect':
         value = value[0] if isinstance(value, list) and len(value) > 0 else value
         
@@ -149,7 +211,7 @@ def render_modified_task_box(param_info, all_columns, step_idx, step, step_param
     if step['function'] == 'filter' and step_param == 'values':
         num_ops = ['>', '<', '>=', '<=', '==', '!=']
         
-        num_or_text = 'numerical' if step['operator'] in num_ops else 'text'
+        num_or_text = 'numerical' if step['operator'] in num_ops and is_numerical(value) else 'text'
         widget_type = param_info['type'][num_or_text]
         
         if step['operator'] == 'between':
@@ -159,7 +221,13 @@ def render_modified_task_box(param_info, all_columns, step_idx, step, step_param
         options = param_info.get('options', all_columns)
         if step['function'] == 'filter' and step_param == 'operator':
             num_ops = ['>', '<', '>=', '<=', '==', '!=']
-            options = num_ops if step['operator'] in num_ops else ['in']
+            filter_value = step['values'][0] if isinstance(step['values'], list) else step['values']
+            
+            options = num_ops if step['operator'] in num_ops and is_numerical(filter_value) else ['in']
+            value = value if step['operator'] in num_ops and is_numerical(filter_value) else 'in'
+            
+            # this line forces replacing the operator with 'in' in case the operator is == with single string value
+            st.session_state.modified_tasks[task_id][task_idx]['steps'][step_idx][step_param] = value
             
         index = options.index(value)
         
@@ -205,7 +273,7 @@ def render_modified_task_box(param_info, all_columns, step_idx, step, step_param
         new_value = st.text_input(
             label=param_info['alias'], 
             key=f'task_{task_idx}_step_{step_idx}_param_{step_param}', 
-            value=value
+            value=value,
         )
         st.warning('Please insert valid values from your selected column.')
         st.warning('If multiple values, separate them with semicolon (;)')
@@ -248,12 +316,21 @@ def process_step_val(val):
             val = val[0]
     
     return f'**{val}**'
+
+def get_template_keys_to_be_substituted(s):
+    return [i[1] for i in Template(s).pattern.findall(s)  if i[1] is not None]
             
 def render_task_step(step_idx, step):
     template_str = PARAMS_MAP[step['function']]['template']
     template = Template(template_str)
     args = {i: process_step_val(j) for i, j in step.items() if i != 'function'}
+
+    template_keys = get_template_keys_to_be_substituted(template_str)
+    fill_missing_args = {i: '**[]**' for i in template_keys if i not in args.keys()}
+    args.update(fill_missing_args)
+    
     val = template.substitute(args)
+
     val = f'{step_idx+1} - {val}'
 
     return st.write(val)

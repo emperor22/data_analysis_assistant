@@ -56,3 +56,7 @@ docs/_build/
 *.db
 .env
 *.code-workspace
+
+resp_jsons/
+test_dataset/
+*.csv

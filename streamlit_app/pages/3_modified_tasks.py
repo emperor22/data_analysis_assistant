@@ -1,4 +1,6 @@
-from utils import send_tasks_to_process, render_modified_task_box, render_task_step, process_step_val, PARAMS_MAP, DEFAULT_PARAMS
+from utils import (send_tasks_to_process, render_modified_task_box, render_task_step, process_step_val, 
+                   PARAMS_MAP, DEFAULT_PARAMS, get_col_info_by_id, get_template_keys_to_be_substituted, 
+                   render_task_ids)
 import streamlit as st
 import json
 from copy import deepcopy
@@ -10,7 +12,7 @@ cols_per_row = 1
 max_task_count = 30
 
 
-task_id = 1 # this should be selectable with a selectbox with this format: 'req_id - dataset_name - date'
+task_id = render_task_ids()
 
 if 'tasks' not in st.session_state:
     st.error('you dont have any request.')
@@ -41,7 +43,7 @@ if task_id not in st.session_state.modified_tasks:
     for task in tasks:
         del task['status']
         del task['result']
-        task['score'] = 0
+        task['score'] = 'inapplicable'
     
     imported_tasks_ids = st.session_state.selected_tasks_to_modify[task_id]
     imported_tasks = [task for task in tasks if task['task_id'] in imported_tasks_ids]
@@ -51,11 +53,9 @@ if task_id not in st.session_state.modified_tasks:
 
 
 # need to get this info from db for each request_id
-ALL_COLUMNS = ['id', 'loan_amnt', 'term', 'int_rate', 'installment', 'home_ownership',
-               'annual_inc', 'verification_status', 'issue_d', 'loan_status',
-               'purpose', 'total_pymnt', 'loan_to_income_ratio', 'total_interest_paid', 
-               'monthly_payment_to_income_ratio', 'annual_income_bracket', 'loan_term_category', 
-               'is_default', 'home_ownership_grouped', 'issue_months_ago']
+dataset_cols = get_col_info_by_id(task_id)
+dataset_cols = json.loads(dataset_cols['columns_info'])
+ALL_COLUMNS = [col['name'] for col in dataset_cols['columns_info']]
 
 
 task_edit_tab, task_overview_tab = st.tabs(['Customize tasks', 'Task overview'])
@@ -117,7 +117,7 @@ with task_edit_tab:
                     
                         
                                 
-                st.markdown(f"**{task['name']}**")
+                st.markdown(f"**{task_idx+1} - {task['name']}**")
                 st.caption(f"*{task['description']}*")
 
                 for step_idx, step in enumerate(task['steps']):
@@ -125,9 +125,16 @@ with task_edit_tab:
                     expander_name = f'Step {step_idx+1}: {func_name}'
                     
                     with st.expander(expander_name):
-                        name_template = PARAMS_MAP[func_name]['template']
+                        template_str = PARAMS_MAP[step['function']]['template']
+                        
                         step_args = {i: process_step_val(j) for i, j in step.items() if i != 'function'}
-                        name = Template(name_template).substitute(step_args)
+
+                        template_keys = get_template_keys_to_be_substituted(template_str)
+                        fill_missing_args = {i: '**[]**' for i in template_keys if i not in step_args.keys()}
+                        step_args.update(fill_missing_args)
+                        
+                        name = Template(template_str).substitute(step_args)
+                        
                         st.write(name)
                         st.write('')
 
@@ -139,7 +146,8 @@ with task_edit_tab:
                                 col1, col2 = st.columns([9, 1])
                                 
                                 with col1:
-                                    new_value = render_modified_task_box(param_info=param_info, 
+                                    new_value = render_modified_task_box(task_id=task_id,
+                                                                        param_info=param_info, 
                                                                         all_columns=ALL_COLUMNS, 
                                                                         step_idx=step_idx, 
                                                                         step=step, 
@@ -165,7 +173,8 @@ with task_edit_tab:
                                 with st.form(form_key, enter_to_submit=False):
                                     col1, col2 = st.columns([10, 1])
                                     with col1:
-                                        new_value = render_modified_task_box(param_info=param_info, 
+                                        new_value = render_modified_task_box(task_id=task_id,
+                                                                            param_info=param_info, 
                                                                             all_columns=ALL_COLUMNS, 
                                                                             step_idx=step_idx, 
                                                                             step=step, 
@@ -222,6 +231,3 @@ with task_overview_tab:
     
         res = send_tasks_to_process(data_tasks, task_id)
         st.write(res)
-        
-    
-        

@@ -1,13 +1,17 @@
-from fastapi import FastAPI, UploadFile, HTTPException, status, Depends, Form
+from fastapi import FastAPI, UploadFile, HTTPException, status, Depends, Form, Request
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from app.services import CsvReader, DatasetProcessorForPrompt
+from app.services import CsvReader, DatasetProcessorForPrompt, is_task_invalid_or_still_processing
 from app.tasks import get_prompt_result_task, data_processing_task, get_additional_analyses_prompt_result
 from app.crud import PromptTableOperation, UserTableOperation, TaskRunTableOperation, DATABASE_URL_SYNC, get_conn
 from app.auth import create_access_token, get_current_user, get_hashed_password, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES
-from app.schemas import UserRegisterModel, ChangePasswordModel, DataTasks
+from app.schemas import UserRegisterModel, ChangePasswordModel, DataTasks, TaskStatus
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.logger import logger
 
 from celery import chain
 
@@ -15,10 +19,51 @@ from sqlalchemy.exc import IntegrityError
 
 from ast import literal_eval
 
+import time
+
+import sentry_sdk
+
+# sentry_sdk.init(
+#     dsn="https://d3b5d645c124aaaf40eb877f11b8704a@o4510198724296704.ingest.us.sentry.io/4510198734520320",
+#     send_default_pii=True,
+#     enable_logs=True
+# )
+
+WARN_FOR_SLOW_RESPONSE_TIME = True
+THRES_SLOW_RESPONSE_TIME_MS = 1000
+
+
+class LogRequestMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.perf_counter()
+        
+        response = await call_next(request)
+        
+        end_time = time.perf_counter()
+        process_time = end_time - start_time
+        process_time_ms = round(process_time * 1000, 2)
+        
+        if response.status_code == 200:
+            logger.debug(f"{request.method} {request.url} | Completed with status {response.status_code} in {process_time_ms} ms")
+        elif response.status_code >= 400:
+            logger.warning(f"CLIENT ERROR 4XX | {request.method} {request.url} | Headers: {dict(request.headers)} | Completed with status {response.status_code} in {process_time_ms} ms")
+        elif response.status_code >= 500:
+            logger.error(f"SERVER ERROR 5XX | {request.method} {request.url} | Headers: {dict(request.headers)} | Completed with status {response.status_code} in {process_time_ms} ms")
+        
+        slow_routes_exclude = ['/upload_dataset']
+        if process_time_ms > THRES_SLOW_RESPONSE_TIME_MS and WARN_FOR_SLOW_RESPONSE_TIME and not any(i in str(request.url) for i in slow_routes_exclude):
+            logger.warning(f'SLOW RESPONSE TIME | {request.method} {request.url} | Headers: {dict(request.headers)} | Completed with status {response.status_code} in {process_time_ms} ms')
+        
+        return response
+
 app = FastAPI()
+
+app.add_middleware(LogRequestMiddleware)
+
 
 @app.get('/')
 async def read_root():
+    logger.error('hello sentry')
     return {'Hello': 'World'}
 
 # to do:
@@ -47,21 +92,25 @@ async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: 
     prompt_table_ops = PromptTableOperation(conn=conn)
     request_id = await prompt_table_ops.add_task(user_id=user_id, prompt_version=prompt_version, filename=dataset_filename, 
                                             dataset_cols=dataset_columns_str, model=model)
-    
+
     parquet_file = f'app/datasets/{request_id}.parquet'
     dataset_dataframe.to_parquet(parquet_file, index=False)
     
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     
-    _ = chain(get_prompt_result_task.s(model, prompt_pt_1, analysis_task_count, request_id, literal_eval(dataset_columns_str)), # accepts prompt, request_id, cols list, db_url
+    _ = chain(get_prompt_result_task.s(model, prompt_pt_1, analysis_task_count, request_id, user_id, literal_eval(dataset_columns_str)), # accepts prompt, request_id, cols list, db_url
             data_processing_task.s(run_info, 'first_run_after_request') # accepts data_tasks (from prev task), run_info dct, db_url, first_run
             ).apply_async()
+    
+    logger.info(f'initial task request added: request_id {request_id}, user_id {user_id}')
     
     return {'detail': 'request task executed'}
         
     # except Exception as e:
     #     return {'detail': e.args}
-    
+
+
+
 @app.post('/execute_analyses')
 async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=Depends(get_current_user), 
                            conn=Depends(get_conn)):
@@ -69,16 +118,15 @@ async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=
     parquet_file = f'app/datasets/{request_id}.parquet'
     
     # check if this task was run by the user requesting the task
-    task_run_table_ops = TaskRunTableOperation(conn)
-    res = await task_run_table_ops.get_task_by_id(user_id, request_id)
-    
-    if not res:
-        return {'detail': 'the request id is not associated with the user id'}
-    
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    if task_still_in_initial_request_process:
+        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
     
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     data_tasks = data_tasks.model_dump()
-    data_processing_task.delay(data_tasks, run_info, False) # accepts data_tasks, run_info dct, db_url, first_run
+    data_processing_task.delay(data_tasks, run_info, 'modified_tasks_execution') # accepts data_tasks, run_info dct, run_type
+    
+    logger.info(f'modified task execution request added: request_id {request_id}, user_id {user_id}')
     
     return {'detail': 'analysis task executed'}
 
@@ -91,17 +139,16 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
     user_id = current_user.user_id
     
     prompt_table_ops = PromptTableOperation(conn)
+    
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    if task_still_in_initial_request_process:
+        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+    
     additional_analyses_prompt_res = await prompt_table_ops.get_additional_analyses_prompt_result(request_id, user_id)
-    first_req_prompt_res = await prompt_table_ops.get_prompt_result(request_id, user_id)
+    additional_analyses_prompt_res = additional_analyses_prompt_res['additional_analyses_prompt_result']
     
-    if not first_req_prompt_res or not first_req_prompt_res['prompt_result']:
-        return {'detail': 'this request is allowed only after the first analysis tasks request'}
-    
-    if additional_analyses_prompt_res:
-        res = additional_analyses_prompt_res['additional_analyses_prompt_result']
-
-        if res is not None:
-            return {'detail': 'can only execute one additional analyses request for one dataset'}
+    if additional_analyses_prompt_res is not None: # if user already run additional analyses on this req_id previously
+        return {'detail': 'can only execute one additional analyses request for one dataset'}
     
     new_tasks_prompt = new_tasks_prompt.split('\n')
 
@@ -109,8 +156,10 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     
     _ = chain(get_additional_analyses_prompt_result.s(model, additional_analyses_task_count, new_tasks_prompt, request_id, user_id), # accepts prompt, request_id, cols list, db_url
-              data_processing_task.s(run_info, 'additional_analyses_request') # accepts data_tasks (from prev task), run_info dct, db_url, first_run
+              data_processing_task.s(run_info, 'additional_analyses_request') # accepts data_tasks (from prev task), run_info dct, run_request
               ).apply_async()
+    
+    logger.info(f'additional analyses request added: request_id {request_id}, user_id {user_id}')
     
     return {'detail': 'additional analyses request executed'}
     
@@ -120,14 +169,56 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
 async def get_task_by_id(request_id: str, conn=Depends(get_conn), current_user=Depends(get_current_user)):
     user_id = current_user.user_id
     request_id = int(request_id)
+
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    if task_still_in_initial_request_process:
+        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
     
     task_run_table_ops = TaskRunTableOperation(conn)
     res = await task_run_table_ops.get_task_by_id(user_id, request_id)
 
-    if res:
-        return res
-    else:
-        return {'detail': 'cannot find the requested task'}
+    return res
+
+@app.get('/get_col_info_by_id/{request_id}')
+async def get_col_info_by_id(request_id: int, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+    user_id = current_user.user_id
+    request_id = int(request_id)
+
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    if task_still_in_initial_request_process:
+        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+    
+    task_run_table_ops = TaskRunTableOperation(conn)
+    res = await task_run_table_ops.get_columns_info_by_id(user_id, request_id)
+
+    return res
+
+@app.get('/get_dataset_snippet_by_id/{request_id}')
+async def get_dataset_snippet_by_id(request_id: int, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+    user_id = current_user.user_id
+    request_id = int(request_id)
+
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    if task_still_in_initial_request_process:
+        return {'detail': 'this is an invalid task or you must run an initial analysis request first'}
+    
+    task_run_table_ops = TaskRunTableOperation(conn)
+    res = await task_run_table_ops.get_dataset_snippet_by_id(user_id, request_id)
+
+    return res
+
+
+
+@app.get('/get_request_ids')
+async def get_request_ids(current_user=Depends(get_current_user), conn=Depends(get_conn)):
+    prompt_table_ops = PromptTableOperation(conn)
+    user_id = current_user.user_id
+    res = await prompt_table_ops.get_request_ids_by_user(user_id)
+    
+    if not res:
+        return {'detail': 'not authenticated or cannot find any request ids'}
+    
+    return {'request_ids': res}
 
 ################### USER ROUTES ###################
 
@@ -138,6 +229,8 @@ async def login(form_data=Depends(OAuth2PasswordRequestForm), conn=Depends(get_c
     password = await user_table_ops.get_password_by_username(form_data.username)
     
     if not user or not verify_password(form_data.password, password):
+        logger.warning(f'user {form_data.username} failed to log in')
+        
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -146,6 +239,9 @@ async def login(form_data=Depends(OAuth2PasswordRequestForm), conn=Depends(get_c
     
     access_token = create_access_token(data={"sub": user.username}, 
                                        expire_minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    logger.info(f'user {user.username} logged in')
+    
     return {'access_token': access_token, 'token_type': 'bearer'}
 
 
@@ -153,13 +249,14 @@ async def login(form_data=Depends(OAuth2PasswordRequestForm), conn=Depends(get_c
 @app.post('/register_user')
 async def register_user(reg_model: UserRegisterModel, conn=Depends(get_conn)):
     try:
-
         hashed_pw = get_hashed_password(reg_model.password)
     
         user_table_ops = UserTableOperation(conn=conn)
         await user_table_ops.create_user(username=reg_model.username, email=reg_model.email, first_name=reg_model.first_name, 
                                          last_name=reg_model.last_name, hashed_password=hashed_pw)
-            
+        
+        logger.info(f'account {reg_model.username} successfully created')
+        
         return {'detail': f'account {reg_model.username} successfully created'}
 
     except IntegrityError:

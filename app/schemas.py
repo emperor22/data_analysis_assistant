@@ -2,7 +2,28 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator, conlist, con
 from typing import List, Union, Dict, Any, Literal
 import re
 from typing import Optional
+from enum import Enum
+from app.logger import logger
 
+
+MIN_VALID_COMMON_TASKS_FIRST_RUN = 5
+MIN_VALID_COMMON_TASKS_SUBSEQUENT_RUNS = 1
+
+class TaskStatus(Enum):
+    waiting_for_initial_request_prompt = 'GETTING INITIAL REQUEST PROMPT RESULT'
+    waiting_for_additional_analysis_prompt_result = 'GETTING ADDITIONAL ANALYSES REQUEST PROMPT RESULT'
+    
+    initial_request_prompt_received = 'INITIAL REQUEST PROMPT RESULT RECEIVED'
+    additional_analysis_prompt_result_received = 'ADDITIONAL ANALYSES PROMPT RESULT RECEIVED'
+    
+    doing_initial_tasks_run = 'RUNNING INITIAL ANALYSES TASKS'
+    doing_additional_tasks_run = 'RUNNING ADDITIONAL ANALYSES TASKS'
+    doing_customized_tasks_run = 'RUNNING USER CUSTOMIZED ANALYSIS TASKS'
+    
+    initial_tasks_run_finished = 'INITIAL ANALYSIS TASKS FINISHED'
+    additional_tasks_run_finished = 'ADDITIONAL ANALYSES TASKS FINISHED'
+    customized_tasks_run_finished = 'USER CUSTOMIZED ANALYSIS TASKS FINISHED'
+    
 class GetCurrentUserModel(BaseModel):
     username: str
     user_id: int
@@ -26,11 +47,6 @@ class ColumnInfo:
 # maybe add these additional info: missing value total, skewness, duplicate values (give option to enable duplicate value removal if key columns are provided)
 
 
-class CommonColumnCombinationModel(BaseModel):
-    name: str
-    formula: str
-    
-    model_config = ConfigDict(extra='forbid')
 
 class CommonColumnCombinationOperation(BaseModel):
     source_columns: List[str] = Field(min_length=1)  # type: ignore
@@ -68,7 +84,7 @@ class MapOperation(BaseModel):
     
 
 class RangeItem(BaseModel):
-    range: str = Field(pattern=r'^\d+(?:\.\d+)?[-\+](\d+|inf)$')
+    range: str = Field(pattern=r'^\d+(?:\.\d+)?[-](\d+(?:\.\d+)?|inf)$')
     label: str
     
     model_config = ConfigDict(extra='forbid')
@@ -123,11 +139,11 @@ class ColumnModel(BaseModel):
         'Geospatial', 'Scientific', 'Descriptive', 'PII', 
         'System/Metadata', 'Unknown'
     ]
-    confidence_score: Literal['low', 'medium', 'high']
+    confidence_score: Literal['low', 'medium', 'high', 'inapplicable']
     data_type: Literal['string', 'integer', 'float', 'datetime']
     type: Literal['Categorical', 'Numerical']
     unit: str = ''
-    expected_values: List[str | int | float] = []
+    expected_values: str | List[str | int | float] = []
     
     model_config = ConfigDict(extra='forbid')
 
@@ -184,7 +200,7 @@ class CommonTaskModel(BaseModel):
     name: str
     description: str
     steps: list # this will be validated in the outer validation (DataAnalysisModel)
-    score: Literal['low', 'medium', 'high']
+    score: Literal['low', 'medium', 'high', 'inapplicable']
     task_id: int
     
     model_config = ConfigDict(extra='forbid')
@@ -199,23 +215,34 @@ def validate_model_wrapper(val, model):
     try:
         model.model_validate(val)
         return True
-    except ValidationError as e:
-        # need to log the error for the item here
+    except ValidationError:
         return False
 
-def filter_out_invalid_values(values, model_key_func, model_map):
+def log_invalid_values(run, invalid_vals_num, req_id, common_task_id):
+    invalid_vals_num = [str(i) for i in invalid_vals_num]
+    if run == 'common_tasks':
+        logger.warning(f'invalid common_tasks step: request_id {req_id}, task id {common_task_id}, steps {", ".join(invalid_vals_num)}')
+    else:
+        logger.warning(f'invalid {run} task: request_id {req_id}, task nums ({", ".join(invalid_vals_num)})')
+
+def filter_out_invalid_values(values, model_key_func, model_map, run, req_id, common_task_id=None):
     valid_vals_num = []
-    
+    invalid_vals_num = []
     for i, val in enumerate(values):
         try:
             model_key = model_key_func(val)
             model = model_map[model_key]
         except (AttributeError, KeyError): # doesnt have a valid model
-            # need to log the discarded item here
+            invalid_vals_num.append(i)
             continue
 
         if validate_model_wrapper(val, model):
             valid_vals_num.append(i)
+        else:
+            invalid_vals_num.append(i)
+    
+    if len(invalid_vals_num) > 0:
+        log_invalid_values(run=run, invalid_vals_num=invalid_vals_num, req_id=req_id, common_task_id=common_task_id)
             
     return valid_vals_num
 
@@ -230,33 +257,38 @@ class DatasetAnalysisModelPartOne(BaseModel):
     
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
-    def filter_out_invalid_transforms(cls, values):
+    def filter_out_invalid_transforms(cls, values, info):
+        req_id = info.context.get('request_id')
+        
         model_key_func = lambda val: val['type']
         values_to_check = [val.operation for val in values]
-        valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, TRANSFORM_MODELS)
-        print('transform', len(valid_vals_num))
+        valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, TRANSFORM_MODELS, 'column_transformation', req_id)
+        
         return [val for i, val in enumerate(values) if i in valid_vals_num]
 
     @field_validator('common_column_combination', mode='after')
     @classmethod
-    def filter_out_invalid_combinations(cls, values):
+    def filter_out_invalid_combinations(cls, values, info):
+        req_id = info.context.get('request_id')
+        
         model_key_func = lambda _: 'column_combination'
         values_to_check = [val.operation for val in values]
-        valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, COMBINATION_MODELS)
-        print('combination', len(valid_vals_num))
+        valid_vals_num = filter_out_invalid_values(values_to_check, model_key_func, COMBINATION_MODELS, 'column_combination', req_id)
 
         return [val for i, val in enumerate(values) if i in valid_vals_num]
     
     @field_validator('columns', mode='after')
     @classmethod
-    def check_all_columns_exist(cls, value: list[dict], info):
-        req_cols = info.context.get('required_cols', [])
+    def check_all_columns_exist(cls, value, info):
+        req_cols = info.context.get('required_cols')
+        req_id = info.context.get('request_id')
         resp_cols = [col.name for col in value]
         missing = set(req_cols) - set(resp_cols)
         if missing:
-            raise ValueError(
-                f"some columns are missing from the response: {', '.join(missing)}"
-            )
+            missing_cols = {', '.join(missing)}
+            logger.warning(f"some columns are missing from the 'columns' section. cols list {missing_cols}; request_id {req_id}")
+            raise ValueError(f"some columns are missing from the response: {missing_cols}")
+            
         return value
 class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent task runs
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
@@ -267,26 +299,30 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
     @field_validator('common_tasks', mode='after')
     @classmethod
     def filter_common_tasks(cls, values, info):
+        req_id = info.context.get('request_id')
+        
         valid_values = []
         
         for task in values:
             model_key_func = lambda val: val['function']
-            valid_steps_num = filter_out_invalid_values(task.steps, model_key_func, STEP_MODELS)
+            valid_steps_num = filter_out_invalid_values(task.steps, model_key_func, STEP_MODELS, 'common_tasks', req_id, task.task_id)
             
             if len(valid_steps_num) < len(task.steps):
-                print('task discarded: task id', task.task_id) 
+                logger.warning(f"task discarded: task id {task['task_id']}") 
             
             if len(valid_steps_num) == len(task.steps):
                 valid_values.append(task)
         
         run_type = info.context.get('run_type')
-        min_valid_values = 5 if run_type == 'first_run_after_request' else 1
+        
+        min_valid_values = MIN_VALID_COMMON_TASKS_FIRST_RUN if run_type == 'first_run_after_request' else MIN_VALID_COMMON_TASKS_SUBSEQUENT_RUNS
         
         if len(valid_values) < min_valid_values:
             raise ValueError('too few valid common_tasks')
         return valid_values
     
 class DataTasks(BaseModel):
+    columns: list[ColumnModel] = []
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
     common_column_combination: list[CommonColumnCombinationModel] = []
