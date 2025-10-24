@@ -427,9 +427,7 @@ def cleanup_agg_col_names(resp_pt_2, resp_pt_1):
         
     return json.loads(json_str)
 
-async def is_task_invalid_or_still_processing(conn, request_id, user_id):
-    prompt_table_ops = PromptTableOperation(conn)
-    
+async def is_task_invalid_or_still_processing(request_id, user_id, prompt_table_ops):
     req_status = await prompt_table_ops.get_request_status(request_id=request_id, user_id=user_id)
     exclude_status = (TaskStatus.waiting_for_initial_request_prompt.value, TaskStatus.initial_request_prompt_received.value, 
                       TaskStatus.doing_initial_tasks_run.value)

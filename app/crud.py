@@ -332,6 +332,9 @@ async def get_prompt_table_ops(conn=Depends(get_conn)):
         
 async def get_task_run_table_ops(conn=Depends(get_conn)):
     yield TaskRunTableOperation(conn=conn)
+    
+async def get_user_table_ops(conn=Depends(get_conn)):
+    yield UserTableOperation(conn=conn)
         
 
 async def read_sql_async(query, conn, insert_or_delete=False):

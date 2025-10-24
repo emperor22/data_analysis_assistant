@@ -9,26 +9,7 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - fastapi_app
-      - streamlit_frontend # Nginx now waits for the Streamlit frontend
-    networks:
-      - app-network
-    # NOTE FOR USER: Ensure your ./nginx/nginx.conf proxies frontend traffic to 'http://streamlit_frontend:8501'
-
-  # Streamlit Frontend Application
-  streamlit_frontend:
-    # --- CHANGE 1: Build path updated to match your folder structure ---
-    build: ./streamlit_app
-    # --- CHANGE 2: Command updated to run your main file (home.py) ---
-    command: streamlit run home.py --server.port 8501 --server.enableCORS true
-    # --- CHANGE 3: Volume path updated to match your folder structure ---
-    volumes:
-      - ./streamlit_app:/app
-    expose:
-      - 8501
-    env_file:
-      - .env
-    depends_on:
-      - fastapi_app # Depends on the API service
+      - streamlit_frontend
     networks:
       - app-network
 
@@ -43,18 +24,23 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 1s
       timeout: 3s
       retries: 30
 
   # FastAPI Application
   fastapi_app:
-    build: ./app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    # This volume path is correct for your structure
+    build: 
+      context: . 
+      dockerfile: ./app/Dockerfile
+    # CRITICAL CHANGE: Set CWD to project root for 'app.main' resolution
+    working_dir: /usr/src/app
+    # CRITICAL CHANGE: Mount the whole project root so 'app' is visible
     volumes:
-      - ./app:/app
+      - .:/usr/src/app
+    # CRITICAL CHANGE: Reference app as a package
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000 --reload
     expose:
       - 8000
     env_file:
@@ -65,12 +51,36 @@ services:
     networks:
       - app-network
 
-  # Celery Worker for the "high_priority" queue
-  get_prompt_res_queue:
-    build: ./app
-    command: celery -A app.tasks  worker --loglevel=info -P gevent --concurrency 10 -Q get_prompt_res_queue
+  # Streamlit Frontend
+  streamlit_frontend:
+    build:
+      context: .
+      dockerfile: ./streamlit_app/Dockerfile
+    # CRITICAL CHANGE: Set CWD to project root
+    working_dir: /usr/src/app
+    # CRITICAL CHANGE: Mount the whole project root
     volumes:
-      - ./app:/app
+      - .:/usr/src/app
+    # NOTE: Streamlit command is fine if it only uses files within streamlit_app/
+    # If it needs 'app.schemas', this CWD is correct.
+    command: streamlit run streamlit_app/home.py --server.port 8501 --server.enableCORS true
+    expose:
+      - 8501
+    networks:
+      - app-network
+
+  # Celery Worker for the "high_priority" queue
+  data_processing_queue:
+    build: 
+      context: . 
+      dockerfile: ./app/Dockerfile
+    # CRITICAL CHANGE: Set CWD to project root for 'app.tasks' resolution
+    working_dir: /usr/src/app
+    # CRITICAL CHANGE: Mount the whole project root
+    volumes:
+      - .:/usr/src/app
+    # CRITICAL CHANGE: Reference app.tasks as a package
+    command: celery -A app.tasks  worker --loglevel=info -P solo -Q data_processing_queue
     env_file:
       - .env
     depends_on:
@@ -80,11 +90,14 @@ services:
       - app-network
 
   # Celery Worker for the "low_priority" queue
-  data_processing_queue:
-    build: ./app
-    command: celery -A app.tasks  worker --loglevel=info -P solo -Q data_processing_queue  
+  get_prompt_res_queue:
+    build: 
+      context: . 
+      dockerfile: ./app/Dockerfile
+    working_dir: /usr/src/app
     volumes:
-      - ./app:/app
+      - .:/usr/src/app
+    command: celery -A app.tasks  worker --loglevel=info -P gevent --concurrency 10 -Q get_prompt_res_queue
     env_file:
       - .env
     depends_on:
@@ -92,7 +105,6 @@ services:
         condition: service_healthy
     networks:
       - app-network
-
 
 networks:
   app-network:

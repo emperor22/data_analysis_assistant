@@ -11,20 +11,20 @@ from string import Template, Formatter
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger_eng')
 
-URL = 'http://localhost:8000'
-
-
-
+# URL = 'https://nginx/api'
+URL = 'localhost:8000'
 
 def submit_login_request(username, password):
     body = {'username': username, 'password': password}
     url = f'{URL}/token'
-    res = requests.post(url, data=body)
+    res = requests.post(url, verify=False, data=body)
     
     if res.status_code == 401:
         return None
-    
-    return res.json()
+    try:
+        return res.json()
+    except:
+        st.write(res.text)
 
 def show_unauthorized_error_and_redirect_to_login():
     st.session_state['authenticated'] = False
@@ -70,7 +70,7 @@ def include_auth_header(func):
                     error_details = res.json()
                     print(error_details)
                     return
-                except requests.exceptions.JSONDecodeError:
+                except requests.exceptions.JSONDecodeError: 
                     print(res.text)
                     return
 
@@ -96,7 +96,7 @@ def include_auth_header(func):
 def get_original_tasks_by_id(task_id, headers=None):
     url = f'{URL}/get_original_tasks_by_id/{task_id}'
     
-    res = requests.get(url, headers=headers)
+    res = requests.get(url, verify=False,  headers=headers)
     
     return res
 
@@ -104,7 +104,7 @@ def get_original_tasks_by_id(task_id, headers=None):
 def get_modified_tasks_by_id(task_id, headers=None):
     url = f'{URL}/get_modified_tasks_by_id/{task_id}'
     
-    res = requests.get(url, headers=headers)
+    res = requests.get(url, verify=False,  headers=headers)
     
     return res
 
@@ -119,7 +119,7 @@ def is_task_still_processing(status):
 def get_task_ids_by_user(headers=None):
     url = f'{URL}/get_request_ids'
     
-    res = requests.get(url, headers=headers) # result is [task_id, filename, status]
+    res = requests.get(url, verify=False,  headers=headers) # result is [task_id, filename, status]
     
     return res
 
@@ -150,7 +150,7 @@ def render_task_ids():
 def get_col_info_by_id(task_id, headers=None):
     url = f'{URL}/get_col_info_by_id/{task_id}'
     
-    res = requests.get(url, headers=headers)
+    res = requests.get(url, verify=False,  headers=headers)
     
     return res
 
@@ -159,7 +159,7 @@ def get_col_info_by_id(task_id, headers=None):
 def get_dataset_snippet_by_id(task_id, headers=None):
     url = f'{URL}/get_dataset_snippet_by_id/{task_id}'
     
-    res = requests.get(url, headers=headers)
+    res = requests.get(url, verify=False,  headers=headers)
     
     return res
 
@@ -168,28 +168,28 @@ def get_dataset_snippet_by_id(task_id, headers=None):
 def send_tasks_to_process(data_tasks, task_id, headers=None):
     url = f'{URL}/execute_analyses?request_id={task_id}'
     
-    res = requests.post(url, data=json.dumps(data_tasks), headers=headers)
+    res = requests.post(url, verify=False,  data=json.dumps(data_tasks), headers=headers)
     
     return res
 
 @include_auth_header
 def make_analysis_request(uploaded_file, model, task_count, headers=None):
-    url = 'http://127.0.0.1:8000/upload_dataset'
+    url = f'{URL}/upload_dataset'
     file = {'file': (uploaded_file.name, uploaded_file.getvalue())}
 
     data = {'model': model, 'analysis_task_count': str(task_count)}
 
-    res = requests.post(url=url, files=file, headers=headers, data=data)
+    res = requests.post(url, verify=False, files=file, headers=headers, data=data)
     
     return res
 
 @include_auth_header
 def make_additional_analyses_request(model, new_tasks_prompt, request_id, headers=None):
-    url = 'http://127.0.0.1:8000/make_additional_analyses_request'
+    url = f'{URL}/make_additional_analyses_request'
 
     data = {'model': model, 'new_tasks_prompt': new_tasks_prompt, 'request_id': request_id}
 
-    res = requests.post(url=url, headers=headers, data=data)
+    res = requests.post(url, verify=False, headers=headers, data=data)
     
     return res
 

@@ -1,11 +1,9 @@
-from celery import Celery, Task
+from celery import Celery
 import json
 import time
-from sqlalchemy import create_engine
 
 from app.services import get_prompt_result, process_llm_api_response, DataAnalysisProcessor, insert_prompt_context, cleanup_agg_col_names
 from app.crud import TaskRunTableOperation, PromptTableOperation, base_engine_sync
-import asyncio
 
 from app.schemas import DataTasks, DatasetAnalysisModelPartOne, DatasetAnalysisModelPartTwo, TaskStatus
 from app.logger import logger
@@ -13,7 +11,7 @@ from pydantic import ValidationError
 from requests.exceptions import RequestException
 from typing import Literal
 
-app = Celery('tasks', backend='redis://localhost:6379/0', broker='redis://localhost:6379/0')
+app = Celery('tasks', backend='redis://redis:6379/0', broker='redis://redis:6379/0')
 app.conf.task_routes = {'tasks.get_prompt_result_task': {'queue': 'get_prompt_res_queue'}, 
                         'tasks.get_additional_analyses_prompt_result': {'queue': 'get_prompt_res_queue'},
                         'tasks.data_processing_task': {'queue': 'data_processing_queue'}

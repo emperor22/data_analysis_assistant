@@ -1,11 +1,12 @@
 from fastapi import FastAPI, UploadFile, HTTPException, status, Depends, Form, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.services import CsvReader, DatasetProcessorForPrompt, is_task_invalid_or_still_processing
 from app.tasks import get_prompt_result_task, data_processing_task, get_additional_analyses_prompt_result
-from app.crud import PromptTableOperation, UserTableOperation, TaskRunTableOperation, DATABASE_URL_SYNC, get_conn
+from app.crud import PromptTableOperation, UserTableOperation, TaskRunTableOperation, DATABASE_URL_SYNC, get_conn, get_prompt_table_ops, get_task_run_table_ops, get_user_table_ops
 from app.auth import create_access_token, get_current_user, get_hashed_password, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.schemas import UserRegisterModel, ChangePasswordModel, DataTasks, TaskStatus
 
@@ -60,6 +61,17 @@ app = FastAPI()
 
 app.add_middleware(LogRequestMiddleware)
 
+origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
+)
+
 
 @app.get('/')
 async def read_root():
@@ -69,7 +81,8 @@ async def read_root():
 # check last user request time from prompt_and_result db and put it in pending if still within time limit
 
 @app.post('/upload_dataset')
-async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: int = Form(...), conn=Depends(get_conn), current_user=Depends(get_current_user)):
+async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: int = Form(...), conn=Depends(get_conn), current_user=Depends(get_current_user), 
+                 prompt_table_ops=Depends(get_prompt_table_ops)):
     # try:
     
     # these values needs to be obtained from user config
@@ -87,8 +100,7 @@ async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: 
                                                 prompt_template_file=f'app/prompts/split_prompt/prompt_part1.md')
     
     prompt_pt_1 = await run_in_threadpool(data_processor.create_prompt)
-        
-    prompt_table_ops = PromptTableOperation(conn=conn)
+    
     request_id = await prompt_table_ops.add_task(user_id=user_id, prompt_version=prompt_version, filename=dataset_filename, 
                                             dataset_cols=dataset_columns_str, model=model)
 
@@ -112,12 +124,12 @@ async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: 
 
 @app.post('/execute_analyses')
 async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=Depends(get_current_user), 
-                           conn=Depends(get_conn)):
+                           prompt_table_ops=Depends(get_prompt_table_ops)):
     user_id = current_user.user_id
     parquet_file = f'app/datasets/{request_id}.parquet'
     
     # check if this task was run by the user requesting the task
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
         raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
@@ -137,13 +149,11 @@ class DataTasksRunInfo:
 
 @app.post('/make_additional_analyses_request')
 async def make_additional_analyses_request(model: str = Form(...), new_tasks_prompt: str = Form(...), request_id: int = Form(...), 
-                                           conn=Depends(get_conn), current_user=Depends(get_current_user)):
+                                           current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops)):
     
     user_id = current_user.user_id
     
-    prompt_table_ops = PromptTableOperation(conn)
-    
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
         raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
@@ -170,15 +180,15 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
 
 
 @app.get('/get_original_tasks_by_id/{request_id}')
-async def get_original_tasks_by_id(request_id: str, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+async def get_original_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
+                                   task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
     request_id = int(request_id)
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
         raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
-    
-    task_run_table_ops = TaskRunTableOperation(conn)
+
     res = await task_run_table_ops.get_original_tasks_by_id(user_id, request_id)
 
     if not res:
@@ -189,15 +199,15 @@ async def get_original_tasks_by_id(request_id: str, conn=Depends(get_conn), curr
 
 
 @app.get('/get_modified_tasks_by_id/{request_id}')
-async def get_modified_tasks_by_id(request_id: str, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+async def get_modified_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
+                                   task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
     request_id = int(request_id)
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
         raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
-    
-    task_run_table_ops = TaskRunTableOperation(conn)
+
     res = await task_run_table_ops.get_modified_tasks_by_id(user_id, request_id)
     
     if not res:
@@ -206,15 +216,15 @@ async def get_modified_tasks_by_id(request_id: str, conn=Depends(get_conn), curr
     return res
 
 @app.get('/get_col_info_by_id/{request_id}')
-async def get_col_info_by_id(request_id: int, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+async def get_col_info_by_id(request_id: int, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
+                             task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
     request_id = int(request_id)
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
         raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
-    
-    task_run_table_ops = TaskRunTableOperation(conn)
+
     res = await task_run_table_ops.get_columns_info_by_id(user_id, request_id)
     
     if not res:
@@ -223,15 +233,15 @@ async def get_col_info_by_id(request_id: int, conn=Depends(get_conn), current_us
     return res
 
 @app.get('/get_dataset_snippet_by_id/{request_id}')
-async def get_dataset_snippet_by_id(request_id: int, conn=Depends(get_conn), current_user=Depends(get_current_user)):
+async def get_dataset_snippet_by_id(request_id: int, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
+                                    task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
     request_id = int(request_id)
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(conn=conn, request_id=request_id, user_id=user_id)
+    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
         raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
-    task_run_table_ops = TaskRunTableOperation(conn)
     res = await task_run_table_ops.get_dataset_snippet_by_id(user_id, request_id)
 
     if not res:
@@ -242,8 +252,7 @@ async def get_dataset_snippet_by_id(request_id: int, conn=Depends(get_conn), cur
 
 
 @app.get('/get_request_ids')
-async def get_request_ids(current_user=Depends(get_current_user), conn=Depends(get_conn)):
-    prompt_table_ops = PromptTableOperation(conn)
+async def get_request_ids(current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops)):
     user_id = current_user.user_id
     res = await prompt_table_ops.get_request_ids_by_user(user_id)
     
@@ -255,8 +264,7 @@ async def get_request_ids(current_user=Depends(get_current_user), conn=Depends(g
 ################### USER ROUTES ###################
 
 @app.post('/token')
-async def login(form_data=Depends(OAuth2PasswordRequestForm), conn=Depends(get_conn)):
-    user_table_ops = UserTableOperation(conn)
+async def login(form_data=Depends(OAuth2PasswordRequestForm), user_table_ops=Depends(get_user_table_ops)):
     user = await user_table_ops.get_user(form_data.username)
     password = await user_table_ops.get_password_by_username(form_data.username)
     
@@ -279,11 +287,10 @@ async def login(form_data=Depends(OAuth2PasswordRequestForm), conn=Depends(get_c
 
 
 @app.post('/register_user')
-async def register_user(reg_model: UserRegisterModel, conn=Depends(get_conn)):
+async def register_user(reg_model: UserRegisterModel, user_table_ops=Depends(get_user_table_ops)):
     try:
         hashed_pw = get_hashed_password(reg_model.password)
-    
-        user_table_ops = UserTableOperation(conn=conn)
+        
         await user_table_ops.create_user(username=reg_model.username, email=reg_model.email, first_name=reg_model.first_name, 
                                          last_name=reg_model.last_name, hashed_password=hashed_pw)
         
