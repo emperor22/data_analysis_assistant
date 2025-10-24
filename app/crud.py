@@ -6,6 +6,20 @@ from string import Template
 import asyncio
 from fastapi import Depends
 
+import datetime
+
+from sqlalchemy import (
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    Column,
+)
+
+from sqlalchemy.orm import declarative_base 
+
+
 DATABASE_URL_ASYNC = 'sqlite+aiosqlite:///./test.sqlite'
 DATABASE_URL_SYNC = 'sqlite:///./test.sqlite'
 
@@ -62,6 +76,75 @@ def create_tables_sqlite():
         ''')
     con.commit()
     con.close()
+    
+
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = 'user'
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True, nullable=False)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    verified = Column(Integer, server_default=text('0'), nullable=False)
+    created_at = Column(
+        DateTime,
+        default=datetime.datetime.now,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+    # Relationships removed
+
+class PromptAndResult(Base):
+    __tablename__ = 'prompt_and_result'
+
+    id = Column(Integer, primary_key=True)
+    # Foreign Key is necessary for schema definition
+    user_id = Column(ForeignKey("user.id")) 
+    
+    prompt_version = Column(Text)
+    filename = Column(Text)
+    dataset_cols = Column(Text)
+    model = Column(String)
+    prompt_result = Column(Text)
+    additional_analyses_prompt_result = Column(Text) 
+    status = Column(String)
+    celery_task_id = Column(String)
+    created_at = Column(
+        DateTime,
+        default=datetime.datetime.now,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+    # Relationships removed
+
+class TaskRun(Base):
+    __tablename__ = 'task_run'
+
+    request_id = Column(
+        ForeignKey("prompt_and_result.id"), primary_key=True
+    )
+    user_id = Column(
+        ForeignKey("user.id"), primary_key=True
+    )
+    
+    original_common_tasks = Column(Text)
+    common_tasks_w_result = Column(Text)
+    column_transforms_status = Column(String)
+    column_combinations_status = Column(String)
+    columns_info = Column(Text)
+    celery_task_id = Column(String)
+    final_dataset_snippet = Column(Text)
+    created_at = Column(
+        DateTime,
+        default=datetime.datetime.now,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+    
+def create_tables():
+    Base.metadata.create_all(base_engine_sync)
 
 
 class UserTableOperation:
@@ -350,20 +433,21 @@ async def read_sql_async(query, conn, insert_or_delete=False):
 
             
 if __name__ == '__main__':
-    # import os
-    # if os.path.exists('test.sqlite'):
-    #     os.remove('test.sqlite')
-    # create_tables_sqlite()
+    # # import os
+    # # if os.path.exists('test.sqlite'):
+    # #     os.remove('test.sqlite')
+    # # create_tables_sqlite()
     
-    DATABASE_URL_ASYNC = 'sqlite+aiosqlite:///./test.sqlite'
-    engine = create_async_engine(DATABASE_URL_ASYNC)
+    # DATABASE_URL_ASYNC = 'sqlite+aiosqlite:///./test.sqlite'
+    # engine = create_async_engine(DATABASE_URL_ASYNC)
     
     
-    async def func():
-        async with engine.connect() as conn:
-            # ops = UserTableOperation(conn)
-            # await ops.create_user(username='emperor22', email='xx@xx.com', first_name='andi', last_name='putra', hashed_password='satuduatiga')
+    # async def func():
+    #     async with engine.connect() as conn:
+    #         # ops = UserTableOperation(conn)
+    #         # await ops.create_user(username='emperor22', email='xx@xx.com', first_name='andi', last_name='putra', hashed_password='satuduatiga')
 
-            await read_sql_async('delete from prompt_and_result', conn, True)
-            await read_sql_async('delete from task_run', conn, True)
-    asyncio.run(func())
+    #         await read_sql_async('delete from prompt_and_result', conn, True)
+    #         await read_sql_async('delete from task_run', conn, True)
+    # asyncio.run(func())
+    create_tables()

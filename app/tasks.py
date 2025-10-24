@@ -11,15 +11,19 @@ from pydantic import ValidationError
 from requests.exceptions import RequestException
 from typing import Literal
 
-app = Celery('tasks', backend='redis://redis:6379/0', broker='redis://redis:6379/0')
+THRES_SLOW_INITIAL_REQUEST_PROCESS_TIME_MS = 90 * 1000
+THRES_SLOW_ADDITIONAL_ANALYSES_REQUEST_PROCESS_TIME_MS = 45 * 1000
+THRES_SLOW_TASK_EXECUTION_PROCESS_TIME_MS = 7 * 1000
+REDIS_URL = 'redis://localhost:6379/0'
+# REDIS_URL = 'redis://redis:6379/0'
+
+app = Celery('tasks', backend=REDIS_URL, broker=REDIS_URL)
 app.conf.task_routes = {'tasks.get_prompt_result_task': {'queue': 'get_prompt_res_queue'}, 
                         'tasks.get_additional_analyses_prompt_result': {'queue': 'get_prompt_res_queue'},
                         'tasks.data_processing_task': {'queue': 'data_processing_queue'}
                         }
 
-THRES_SLOW_INITIAL_REQUEST_PROCESS_TIME_MS = 90 * 1000
-THRES_SLOW_ADDITIONAL_ANALYSES_REQUEST_PROCESS_TIME_MS = 45 * 1000
-THRES_SLOW_TASK_EXECUTION_PROCESS_TIME_MS = 7 * 1000
+
 
 class DatabaseTask(app.Task):
     def get_engine(self):

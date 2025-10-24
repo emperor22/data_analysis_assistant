@@ -287,10 +287,10 @@ async def login(form_data=Depends(OAuth2PasswordRequestForm), user_table_ops=Dep
 
 
 @app.post('/register_user')
-async def register_user(reg_model: UserRegisterModel, user_table_ops=Depends(get_user_table_ops)):
+async def register_user(reg_model: UserRegisterModel, user_table_ops: UserTableOperation=Depends(get_user_table_ops)):
     try:
         hashed_pw = get_hashed_password(reg_model.password)
-        
+        print(await user_table_ops.get_user('emperor22'))
         await user_table_ops.create_user(username=reg_model.username, email=reg_model.email, first_name=reg_model.first_name, 
                                          last_name=reg_model.last_name, hashed_password=hashed_pw)
         
@@ -298,7 +298,8 @@ async def register_user(reg_model: UserRegisterModel, user_table_ops=Depends(get
         
         return {'detail': f'account {reg_model.username} successfully created'}
 
-    except IntegrityError:
+    except IntegrityError as e:
+        print(e.args)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f'username {reg_model.username} or email {reg_model.email} already exists.'

@@ -12,7 +12,7 @@ from string import Template, Formatter
 # nltk.download('averaged_perceptron_tagger_eng')
 
 # URL = 'https://nginx/api'
-URL = 'localhost:8000'
+URL = 'http://localhost:8000'
 
 def submit_login_request(username, password):
     body = {'username': username, 'password': password}
@@ -125,22 +125,26 @@ def get_task_ids_by_user(headers=None):
 
 def render_task_ids():
     task_ids = get_task_ids_by_user()
-    
-    if not task_ids:
-        st.error('cannot find request ids')
-        st.stop()
-        
-    task_ids = [i[0] for i in task_ids['request_ids'] if not is_task_still_processing(i[2])] # get first value which is the task id
     col1, col2 = st.columns([12, 1])
-    with col1:
-        task_ids_select = st.selectbox('Select Task ID', options=[''] + task_ids, key='task_id_select')
+    
     with col2:
         if st.button('⟳'):
             get_task_ids_by_user.clear()
             st.rerun()
+    with col1:
+        if not task_ids:
+            st.error('cannot find request ids')
+            st.stop()
+            
+        task_ids = [i[0] for i in task_ids['request_ids'] if not is_task_still_processing(i[2])] # get first value which is the task id
+        
+        task_ids_select = st.selectbox('Select Task ID', options=[''] + task_ids, key='task_id_select')
+
+        
+        if not task_ids_select:
+            st.stop()
     
-    if not task_ids_select:
-        st.stop()
+
     
     return task_ids_select
     
