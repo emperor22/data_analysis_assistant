@@ -129,11 +129,16 @@ async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=
     
     return {'detail': 'analysis task executed'}
 
+class DataTasksRunInfo:
+    request_id: int
+    user_id: int
+    parquet_file: str
+    
+
 @app.post('/make_additional_analyses_request')
 async def make_additional_analyses_request(model: str = Form(...), new_tasks_prompt: str = Form(...), request_id: int = Form(...), 
                                            conn=Depends(get_conn), current_user=Depends(get_current_user)):
     
-    ADDITIONAL_ANALYSES_TASK_COUNT = 5
     user_id = current_user.user_id
     
     prompt_table_ops = PromptTableOperation(conn)
@@ -151,9 +156,10 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
     new_tasks_prompt = new_tasks_prompt.split('\n')
 
     parquet_file = f'app/datasets/{request_id}.parquet'
+    
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     
-    _ = chain(get_additional_analyses_prompt_result.s(model, ADDITIONAL_ANALYSES_TASK_COUNT, new_tasks_prompt, request_id, user_id), # accepts prompt, request_id, cols list, db_url
+    _ = chain(get_additional_analyses_prompt_result.s(model, new_tasks_prompt, request_id, user_id), # accepts prompt, request_id, cols list, db_url
               data_processing_task.s(run_info, 'additional_analyses_request') # accepts data_tasks (from prev task), run_info dct, run_request
               ).apply_async()
     

@@ -224,8 +224,6 @@ with task_overview_tab:
     
         res = send_tasks_to_process(data_tasks, task_id)
         
-        get_modified_tasks_by_id.clear()
-        
         st.write(res)
         
         

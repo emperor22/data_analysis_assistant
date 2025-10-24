@@ -1,0 +1,5 @@
+streamlit
+pandas
+pyarrow
+streamlit-local-storage
+streamlit-autorefresh

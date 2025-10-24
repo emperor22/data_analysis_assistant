@@ -100,7 +100,6 @@ def get_original_tasks_by_id(task_id, headers=None):
     
     return res
 
-@st.cache_data
 @include_auth_header
 def get_modified_tasks_by_id(task_id, headers=None):
     url = f'{URL}/get_modified_tasks_by_id/{task_id}'

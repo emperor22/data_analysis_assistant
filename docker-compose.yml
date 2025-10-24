@@ -1,0 +1,102 @@
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - fastapi_app
+      - streamlit_frontend # Nginx now waits for the Streamlit frontend
+    networks:
+      - app-network
+    # NOTE FOR USER: Ensure your ./nginx/nginx.conf proxies frontend traffic to 'http://streamlit_frontend:8501'
+
+  # Streamlit Frontend Application
+  streamlit_frontend:
+    # --- CHANGE 1: Build path updated to match your folder structure ---
+    build: ./streamlit_app
+    # --- CHANGE 2: Command updated to run your main file (home.py) ---
+    command: streamlit run home.py --server.port 8501 --server.enableCORS true
+    # --- CHANGE 3: Volume path updated to match your folder structure ---
+    volumes:
+      - ./streamlit_app:/app
+    expose:
+      - 8501
+    env_file:
+      - .env
+    depends_on:
+      - fastapi_app # Depends on the API service
+    networks:
+      - app-network
+
+  # Redis Message Broker
+  redis:
+    image: redis:7-alpine
+    command: redis-server
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  # FastAPI Application
+  fastapi_app:
+    build: ./app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    # This volume path is correct for your structure
+    volumes:
+      - ./app:/app
+    expose:
+      - 8000
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Celery Worker for the "high_priority" queue
+  get_prompt_res_queue:
+    build: ./app
+    command: celery -A app.tasks  worker --loglevel=info -P gevent --concurrency 10 -Q get_prompt_res_queue
+    volumes:
+      - ./app:/app
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Celery Worker for the "low_priority" queue
+  data_processing_queue:
+    build: ./app
+    command: celery -A app.tasks  worker --loglevel=info -P solo -Q data_processing_queue  
+    volumes:
+      - ./app:/app
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis_data:

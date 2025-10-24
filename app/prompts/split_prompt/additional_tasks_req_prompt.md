@@ -19,7 +19,7 @@ $new_tasks_prompt
 
 Instructions:
 
-Generate $additional_analyses_task_count high-relevance analysis tasks based only on the user's request and the context provided in context JSON. Each line of user's request should equal one analysis task.
+Generate several high-relevance analysis tasks based only on the user's request and the context provided in context JSON. Each line of user's request should equal one analysis task.
 
 **Task Constraints**
 

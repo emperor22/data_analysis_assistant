@@ -4,16 +4,13 @@ from sqlalchemy.exc import IntegrityError
 import sqlite3
 from string import Template
 import asyncio
+from fastapi import Depends
 
 DATABASE_URL_ASYNC = 'sqlite+aiosqlite:///./test.sqlite'
 DATABASE_URL_SYNC = 'sqlite:///./test.sqlite'
 
 base_engine = create_async_engine(DATABASE_URL_ASYNC)
 base_engine_sync = create_engine(DATABASE_URL_SYNC)
-
-async def get_conn():
-    async with base_engine.connect() as conn:
-        yield conn
 
 
 def create_tables_sqlite():
@@ -324,7 +321,17 @@ class TaskRunTableOperation:
         res = self.conn_sync.execute(text(query), {'user_id': user_id, 'request_id': request_id})
         res = res.fetchone()
         return res._mapping if res else None
+    
+    
+async def get_conn():
+    async with base_engine.connect() as conn:
+        yield conn
         
+async def get_prompt_table_ops(conn=Depends(get_conn)):
+    yield PromptTableOperation(conn=conn)
+        
+async def get_task_run_table_ops(conn=Depends(get_conn)):
+    yield TaskRunTableOperation(conn=conn)
         
 
 async def read_sql_async(query, conn, insert_or_delete=False):

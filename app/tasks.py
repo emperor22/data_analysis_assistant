@@ -62,7 +62,7 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
     try:
         resp_pt_1 = DatasetAnalysisModelPartOne.model_validate(resp_pt_1, context={'required_cols': dataset_cols, 'request_id': request_id})
     except ValidationError:
-        logger.exception(f'failed first part response validation: {resp_pt_1}')
+        logger.exception(f'failed first part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_1}')
         raise
     
     resp_pt_1 = resp_pt_1.model_dump()
@@ -84,7 +84,7 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
     try:
         resp_pt_2 = DatasetAnalysisModelPartTwo.model_validate(resp_pt_2, context={'run_type': 'first_run_after_request', 'request_id': request_id})
     except ValidationError:
-        logger.exception(f'failed second part response validation: {resp_pt_2}')
+        logger.exception(f'failed first part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_2}')
         raise
     
     resp_pt_2 = resp_pt_2.model_dump()
@@ -145,7 +145,7 @@ def get_additional_analyses_prompt_result(self, model, additional_analyses_task_
     #     context_json[field] = resp_pt_1[field]
     
     
-    # context = {'additional_analyses_task_count': additional_analyses_task_count, 'context_json': json.dumps(context_json), 'new_tasks_prompt': new_tasks_prompt}
+    # context = {'context_json': json.dumps(context_json), 'new_tasks_prompt': new_tasks_prompt}
     # prompt = insert_prompt_context(prompt_file=prompt_file, context=context)
     
     # resp = get_prompt_result(prompt, model)     
@@ -160,7 +160,7 @@ def get_additional_analyses_prompt_result(self, model, additional_analyses_task_
     try:
         resp = DatasetAnalysisModelPartTwo.model_validate(resp, context={'run_type': 'additional_analyses_request', 'request_id': request_id})
     except ValidationError:
-        logger.exception(f'failed additional analyses response validation: {resp}')
+        logger.exception(f'failed additional analyses response validation: request_id {request_id}, user_id {user_id}, resp -> {resp}')
         raise
         
     resp = resp.model_dump()
@@ -170,11 +170,7 @@ def get_additional_analyses_prompt_result(self, model, additional_analyses_task_
         prompt_table_ops.insert_additional_analyses_prompt_result_sync(request_id=request_id, additional_analyses_prompt_result=json.dumps(resp))
         prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.additional_analysis_prompt_result_received.value)
     
-    data_tasks = DataTasks(
-        common_tasks=resp['common_tasks'], 
-        common_column_cleaning_or_transformation=[],
-        common_column_combination=[]
-        )
+    data_tasks = DataTasks(common_tasks=resp['common_tasks'], common_column_cleaning_or_transformation=[], common_column_combination=[])
     
     process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
     
