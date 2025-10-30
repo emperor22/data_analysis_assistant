@@ -110,7 +110,7 @@ async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: 
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     
     _ = chain(get_prompt_result_task.s(model, prompt_pt_1, analysis_task_count, request_id, user_id, literal_eval(dataset_columns_str)), # accepts prompt, request_id, cols list, db_url
-            data_processing_task.s(run_info, 'first_run_after_request') # accepts data_tasks (from prev task), run_info dct, db_url, first_run
+            data_processing_task.s(run_info, 'first_run_after_request') # accepts data_tasks (from prev task), run_info dct, run_type
             ).apply_async()
     
     logger.info(f'initial task request added: request_id {request_id}, user_id {user_id}')
@@ -123,7 +123,7 @@ async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: 
 
 
 @app.post('/execute_analyses')
-async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=Depends(get_current_user), 
+async def execute_analyses(data_tasks: DataTasks, request_id: str, current_user=Depends(get_current_user), 
                            prompt_table_ops=Depends(get_prompt_table_ops)):
     user_id = current_user.user_id
     parquet_file = f'app/datasets/{request_id}.parquet'
@@ -142,13 +142,13 @@ async def execute_analyses(data_tasks: DataTasks, request_id: int, current_user=
     return {'detail': 'analysis task executed'}
 
 class DataTasksRunInfo:
-    request_id: int
+    request_id: str
     user_id: int
     parquet_file: str
     
 
 @app.post('/make_additional_analyses_request')
-async def make_additional_analyses_request(model: str = Form(...), new_tasks_prompt: str = Form(...), request_id: int = Form(...), 
+async def make_additional_analyses_request(model: str = Form(...), new_tasks_prompt: str = Form(...), request_id: str = Form(...), 
                                            current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops)):
     
     user_id = current_user.user_id
@@ -183,7 +183,6 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
 async def get_original_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
                                    task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
-    request_id = int(request_id)
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
@@ -202,7 +201,6 @@ async def get_original_tasks_by_id(request_id: str, current_user=Depends(get_cur
 async def get_modified_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
                                    task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
-    request_id = int(request_id)
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
@@ -216,10 +214,9 @@ async def get_modified_tasks_by_id(request_id: str, current_user=Depends(get_cur
     return res
 
 @app.get('/get_col_info_by_id/{request_id}')
-async def get_col_info_by_id(request_id: int, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
+async def get_col_info_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
                              task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
-    request_id = int(request_id)
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:
@@ -233,10 +230,9 @@ async def get_col_info_by_id(request_id: int, current_user=Depends(get_current_u
     return res
 
 @app.get('/get_dataset_snippet_by_id/{request_id}')
-async def get_dataset_snippet_by_id(request_id: int, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
+async def get_dataset_snippet_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
                                     task_run_table_ops=Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
-    request_id = int(request_id)
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
     if task_still_in_initial_request_process:

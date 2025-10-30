@@ -6,6 +6,8 @@ from string import Template
 import asyncio
 from fastapi import Depends
 
+import uuid
+
 import datetime
 
 from sqlalchemy import (
@@ -101,7 +103,7 @@ class User(Base):
 class PromptAndResult(Base):
     __tablename__ = 'prompt_and_result'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Text, primary_key=True)
     # Foreign Key is necessary for schema definition
     user_id = Column(ForeignKey("user.id")) 
     
@@ -198,17 +200,19 @@ class PromptTableOperation:
 
     
     async def add_task(self, user_id: int, prompt_version: str, filename: str, dataset_cols: str, model: str):
-        prompt_table = await self._get_table_obj()
-        stmt = insert(prompt_table).values(user_id=user_id, prompt_version=prompt_version, filename=filename, 
-                                           dataset_cols=dataset_cols, model=model)
 
-        result = await self.conn.execute(stmt)
+        
+        req_id = str(uuid.uuid4())
+        query = '''insert into prompt_and_result(id, user_id, prompt_version, filename, dataset_cols, model)
+                    values (:id, :user_id, :prompt_version, :filename, :dataset_cols, :model)'''
+        await self.conn.execute(text(query), {'id': req_id, 'user_id': user_id, 'prompt_version': prompt_version, 
+                                              'filename': filename, 'dataset_cols': dataset_cols, 'model': model})
         await self.conn.commit()
-        inserted_id = result.inserted_primary_key[0]
-        return inserted_id
+
+        return req_id
             
     # is a synchronous function because will be used in gevent worker
-    def insert_prompt_result_sync(self, request_id: int, prompt_result: str):
+    def insert_prompt_result_sync(self, request_id: str, prompt_result: str):
         if not self.conn_sync:
             raise Exception('conn_sync object has not been instantiated')
         
@@ -219,14 +223,14 @@ class PromptTableOperation:
         self.conn_sync.execute(text(query) ,{'request_id': request_id, 'prompt_result': prompt_result})
         self.conn_sync.commit()
         
-    async def get_prompt_result(self, request_id: int, user_id: int):
+    async def get_prompt_result(self, request_id: str, user_id: int):
         query = '''select prompt_result from prompt_and_result where user_id = :user_id and id = :request_id'''
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
         return res._mapping if res and res.prompt_result is not None else None
         
-    def get_prompt_result_sync(self, request_id: int, user_id: int):
+    def get_prompt_result_sync(self, request_id: str, user_id: int):
         if not self.conn_sync:
             raise Exception('conn_sync object has not been instantiated')
         query = '''select prompt_result from prompt_and_result where user_id = :user_id and id = :request_id'''
@@ -235,7 +239,7 @@ class PromptTableOperation:
         res = res.fetchone()
         return res._mapping if res and res.prompt_result is not None else None
 
-    def insert_additional_analyses_prompt_result_sync(self, request_id: int, additional_analyses_prompt_result: str):
+    def insert_additional_analyses_prompt_result_sync(self, request_id: str, additional_analyses_prompt_result: str):
         if not self.conn_sync:
             raise Exception('conn_sync object has not been instantiated')
         
@@ -246,7 +250,7 @@ class PromptTableOperation:
         self.conn_sync.execute(text(query) ,{'request_id': request_id, 'additional_analyses_prompt_result': additional_analyses_prompt_result})
         self.conn_sync.commit()
         
-    async def get_additional_analyses_prompt_result(self, request_id: int, user_id: int):
+    async def get_additional_analyses_prompt_result(self, request_id: str, user_id: int):
         query = '''select additional_analyses_prompt_result from prompt_and_result where user_id = :user_id and id = :request_id'''
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
@@ -264,14 +268,14 @@ class PromptTableOperation:
         self.conn_sync.execute(text(query), {'request_id': request_id,  'status': status})
         self.conn_sync.commit()
     
-    async def get_request_status(self, request_id: int, user_id: int):
+    async def get_request_status(self, request_id: str, user_id: int):
         query = '''select status from prompt_and_result where user_id = :user_id and id = :request_id'''
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
         return res._mapping if res and res.status is not None else None
     
-    async def get_dataset_snippet_by_id(self, request_id: int, user_id: int):
+    async def get_dataset_snippet_by_id(self, request_id: str, user_id: int):
         query = '''select dataset_cols from prompt_and_result where user_id = :user_id and id = :request_id'''
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
@@ -290,7 +294,7 @@ class TaskRunTableOperation:
         self.conn = conn
         self.conn_sync = conn_sync
     
-    def add_task_result_sync(self, request_id: int, user_id: int, original_common_tasks: str):
+    def add_task_result_sync(self, request_id: str, user_id: int, original_common_tasks: str):
         if not self.conn_sync:
             raise Exception('conn_sync object has not been instantiated')
         
@@ -299,7 +303,7 @@ class TaskRunTableOperation:
         self.conn_sync.execute(text(query) ,{'request_id': request_id, 'user_id': user_id, 'original_common_tasks': original_common_tasks})
         self.conn_sync.commit()
     
-    def update_task_result_sync(self, request_id: int, common_tasks_w_result: str):
+    def update_task_result_sync(self, request_id: str, common_tasks_w_result: str):
         if not self.conn_sync:
             raise Exception('conn_sync object has not been instantiated')
         
@@ -310,7 +314,7 @@ class TaskRunTableOperation:
         self.conn_sync.execute(text(query) ,{'request_id': request_id, 'common_tasks_w_result': common_tasks_w_result})
         self.conn_sync.commit()
         
-    def update_original_common_task_result_sync(self, request_id: int, original_common_tasks: str):
+    def update_original_common_task_result_sync(self, request_id: str, original_common_tasks: str):
         if not self.conn_sync:
             raise Exception('conn_sync object has not been instantiated')
         
@@ -365,7 +369,7 @@ class TaskRunTableOperation:
         self.conn_sync.execute(text(query) ,{'request_id': request_id, 'columns_info': columns_info})
         self.conn_sync.commit()
     
-    async def get_original_tasks_by_id(self, user_id:int, request_id: int):
+    async def get_original_tasks_by_id(self, user_id:int, request_id: str):
         query = '''select original_common_tasks from task_run 
                    where user_id = :user_id and request_id = :request_id'''
     
@@ -373,7 +377,7 @@ class TaskRunTableOperation:
         res = res.fetchone()
         return res._mapping if res and res.original_common_tasks is not None else None
     
-    async def get_modified_tasks_by_id(self, user_id:int, request_id: int):
+    async def get_modified_tasks_by_id(self, user_id:int, request_id: str):
         query = '''select common_tasks_w_result from task_run 
                    where user_id = :user_id and request_id = :request_id'''
     
@@ -382,7 +386,7 @@ class TaskRunTableOperation:
         return res._mapping if res and res.common_tasks_w_result is not None else None
 
     
-    async def get_columns_info_by_id(self, user_id:int, request_id: int):
+    async def get_columns_info_by_id(self, user_id:int, request_id: str):
         query = '''select columns_info from task_run 
                    where user_id = :user_id and request_id = :request_id'''
     
@@ -390,7 +394,7 @@ class TaskRunTableOperation:
         res = res.fetchone()
         return res._mapping if res else None
     
-    async def get_dataset_snippet_by_id(self, user_id:int, request_id: int):
+    async def get_dataset_snippet_by_id(self, user_id:int, request_id: str):
         query = '''select final_dataset_snippet from task_run 
                    where user_id = :user_id and request_id = :request_id'''
     
@@ -398,7 +402,7 @@ class TaskRunTableOperation:
         res = res.fetchone()
         return res._mapping if res else None
     
-    def get_task_by_id_sync(self, user_id:int, request_id: int):
+    def get_task_by_id_sync(self, user_id:int, request_id: str):
         query = '''select original_common_tasks, common_tasks_w_result from task_run where user_id = :user_id and request_id = :request_id'''
 
         res = self.conn_sync.execute(text(query), {'user_id': user_id, 'request_id': request_id})
@@ -442,12 +446,12 @@ if __name__ == '__main__':
     # engine = create_async_engine(DATABASE_URL_ASYNC)
     
     
-    # async def func():
-    #     async with engine.connect() as conn:
-    #         # ops = UserTableOperation(conn)
-    #         # await ops.create_user(username='emperor22', email='xx@xx.com', first_name='andi', last_name='putra', hashed_password='satuduatiga')
+    async def func():
+        async with base_engine.connect() as conn:
+            # ops = UserTableOperation(conn)
+            # await ops.create_user(username='emperor22', email='xx@xx.com', first_name='andi', last_name='putra', hashed_password='satuduatiga')
 
-    #         await read_sql_async('delete from prompt_and_result', conn, True)
-    #         await read_sql_async('delete from task_run', conn, True)
-    # asyncio.run(func())
-    create_tables()
+            await read_sql_async('delete from prompt_and_result', conn, True)
+            await read_sql_async('delete from task_run', conn, True)
+    asyncio.run(func())
+    # create_tables()

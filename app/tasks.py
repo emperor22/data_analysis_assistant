@@ -55,10 +55,10 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
     # resp_pt_1 = get_prompt_result(prompt_pt_1, model)     
     # resp_pt_1 = process_llm_api_response(resp_pt_1)
     
-    # with open(f'resp_jsons/resp_pt1_req_id_{request_id}.json', 'w') as f:       # writing to file to check result directly for debugging
+    # with open(f'resp_jsons/resp_pt1.json', 'w') as f:       # writing to file to check result directly for debugging
     #     f.write(json.dumps(resp_pt_1, indent=4))
     
-    with open(f'resp_jsons/resp_pt1_req_id_{request_id}.json', 'r') as f:      # mocking part 1 response
+    with open(f'resp_jsons/resp_pt1.json', 'r') as f:      # mocking part 1 response
         resp_pt_1 = json.load(f)
     
     try:
@@ -77,10 +77,10 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
     # resp_pt_2 = get_prompt_result(prompt_pt_2, model)     
     # resp_pt_2 = process_llm_api_response(resp_pt_2)
     
-    # with open(f'resp_jsons/resp_pt2_req_id_{request_id}.json', 'w') as f:     # writing to file to check result directly for debugging
+    # with open(f'resp_jsons/resp_pt2.json', 'w') as f:     # writing to file to check result directly for debugging
     #     f.write(json.dumps(resp_pt_2, indent=4))
     
-    with open(f'resp_jsons/resp_pt2_req_id_{request_id}.json', 'r') as f:        # mocking part 2 response
+    with open(f'resp_jsons/resp_pt2.json', 'r') as f:        # mocking part 2 response
         resp_pt_2 = json.load(f)
     
     try:
@@ -153,10 +153,10 @@ def get_additional_analyses_prompt_result(self, model, additional_analyses_task_
     # resp = get_prompt_result(prompt, model)     
     # resp = process_llm_api_response(resp)
     
-    # with open(f'resp_jsons/resp_additional_analyses_req_id_{request_id}.json', 'w') as f:
+    # with open(f'resp_jsons/resp_additional_analyses.json', 'w') as f:
     #     f.write(json.dumps(resp, indent=4))
     
-    with open(f'resp_jsons/resp_additional_analyses_req_id_{request_id}.json', 'r') as f:
+    with open(f'resp_jsons/resp_additional_analyses.json', 'r') as f:
         resp = json.load(f)
     
     try:
