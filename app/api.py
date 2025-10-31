@@ -112,10 +112,11 @@ async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: 
     dataset_dataframe.to_parquet(parquet_file, index=False)
     
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
-    
-    _ = chain(get_prompt_result_task.s(model, prompt_pt_1, analysis_task_count, request_id, user_id, literal_eval(dataset_columns_str)), # accepts prompt, request_id, cols list, db_url
-            data_processing_task.s(run_info, 'first_run_after_request') # accepts data_tasks (from prev task), run_info dct, run_type
-            ).apply_async()
+
+    _ = chain(get_prompt_result_task.s(model=model, prompt_pt_1=prompt_pt_1, task_count=analysis_task_count, 
+                                       request_id=request_id, user_id=user_id, dataset_cols=literal_eval(dataset_columns_str)), 
+              data_processing_task.s(run_info=run_info, run_type='first_run_after_request')
+              ).apply_async()
     
     logger.info(f'initial task request added: request_id {request_id}, user_id {user_id}')
     
@@ -139,7 +140,7 @@ async def execute_analyses(data_tasks: DataTasks, request_id: str, current_user=
     
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     data_tasks = data_tasks.model_dump()
-    data_processing_task.delay(data_tasks, run_info, 'modified_tasks_execution') # accepts data_tasks, run_info dct, run_type
+    data_processing_task.delay(data_tasks=data_tasks, run_info=run_info, run_type='modified_tasks_execution')
     
     logger.info(f'modified task execution request added: request_id {request_id}, user_id {user_id}')
     
@@ -167,8 +168,8 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
     
     run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
     
-    _ = chain(get_additional_analyses_prompt_result.s(model, new_tasks_prompt, request_id, user_id), # accepts prompt, request_id, cols list, db_url
-              data_processing_task.s(run_info, 'additional_analyses_request') # accepts data_tasks (from prev task), run_info dct, run_request
+    _ = chain(get_additional_analyses_prompt_result.s(model=model, new_tasks_prompt=new_tasks_prompt, request_id=request_id, user_id=user_id),
+              data_processing_task.s(run_info=run_info, run_type='additional_analyses_request')
               ).apply_async()
     
     logger.info(f'additional analyses request added: request_id {request_id}, user_id {user_id}')

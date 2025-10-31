@@ -42,8 +42,7 @@ class CommonColumnCombinationOperation(BaseModel):
     model_config = ConfigDict(extra='forbid')
     
     @model_validator(mode='after')
-    @classmethod
-    def check_if_columns_match_expression(cls, model_instance):
+    def check_if_columns_match_expression(self, model_instance):
         regex = r'\b(?![0-9]+(\.[0-9]+)?\b)([a-zA-Z0-9_]+)\b'
         expression = model_instance.expression
         source_cols = model_instance.source_columns
@@ -98,8 +97,7 @@ class MathOpOperation(BaseModel):
     model_config = ConfigDict(extra='forbid')
     
     @model_validator(mode='after')
-    @classmethod
-    def check_if_columns_match_expression(cls, model_instance):
+    def check_if_columns_match_expression(self, model_instance):
         regex = r'\b(?![0-9]+(\.[0-9]+)?\b)([a-zA-Z0-9_]+)\b'
         expression = model_instance.expression
         source_cols = model_instance.source_columns
@@ -151,8 +149,7 @@ class GroupByStepModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
     
     @model_validator(mode='after')
-    @classmethod
-    def check_count_count_aggregation(cls, model_instance):
+    def check_count_count_aggregation(self, model_instance):
         group_cols = model_instance.columns_to_group_by
         agg_cols = model_instance.columns_to_aggregate
         
