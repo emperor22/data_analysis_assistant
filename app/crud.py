@@ -8,7 +8,7 @@ from fastapi import Depends
 
 import uuid
 
-import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     ForeignKey,
@@ -39,8 +39,6 @@ def create_tables_sqlite():
         first_name text not null, 
         last_name text not null,
         email text not null unique,
-        hashed_password text not null,
-        verified integer not null default 0,
         created_at datetime default CURRENT_TIMESTAMP
         )
         
@@ -83,29 +81,28 @@ def create_tables_sqlite():
 
 Base = declarative_base()
 
+def get_current_time_utc():
+    return datetime.now(timezone.utc)
+
 class User(Base):
     __tablename__ = 'user'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Text, primary_key=True)
     username = Column(String, unique=True, nullable=False)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    verified = Column(Integer, server_default=text('0'), nullable=False)
-    created_at = Column(
-        DateTime,
-        default=datetime.datetime.now,
-        server_default=text("CURRENT_TIMESTAMP"),
-    )
-    # Relationships removed
+    otp = Column(String, nullable=True)
+    otp_expire = Column(DateTime, nullable=True)
+    last_otp_request = Column(DateTime)
+    created_at = Column(DateTime)
 
 class PromptAndResult(Base):
     __tablename__ = 'prompt_and_result'
 
     id = Column(Text, primary_key=True)
-    # Foreign Key is necessary for schema definition
-    user_id = Column(ForeignKey("user.id")) 
+    
+    user_id = Column(Text, ForeignKey("user.id")) 
     
     prompt_version = Column(Text)
     filename = Column(Text)
@@ -115,22 +112,13 @@ class PromptAndResult(Base):
     additional_analyses_prompt_result = Column(Text) 
     status = Column(String)
     celery_task_id = Column(String)
-    created_at = Column(
-        DateTime,
-        default=datetime.datetime.now,
-        server_default=text("CURRENT_TIMESTAMP"),
-    )
-    # Relationships removed
+    created_at = Column(DateTime)
 
 class TaskRun(Base):
     __tablename__ = 'task_run'
 
-    request_id = Column(
-        ForeignKey("prompt_and_result.id"), primary_key=True
-    )
-    user_id = Column(
-        ForeignKey("user.id"), primary_key=True
-    )
+    request_id = Column(Text, ForeignKey("prompt_and_result.id"), primary_key=True)
+    user_id = Column(Text, ForeignKey("user.id"), primary_key=True)
     
     original_common_tasks = Column(Text)
     common_tasks_w_result = Column(Text)
@@ -139,11 +127,7 @@ class TaskRun(Base):
     columns_info = Column(Text)
     celery_task_id = Column(String)
     final_dataset_snippet = Column(Text)
-    created_at = Column(
-        DateTime,
-        default=datetime.datetime.now,
-        server_default=text("CURRENT_TIMESTAMP"),
-    )
+    created_at = Column(DateTime)
     
 def create_tables():
     Base.metadata.create_all(base_engine_sync)
@@ -160,25 +144,20 @@ class UserTableOperation:
         res = res.fetchone()
         return res._mapping if res else None
     
-    async def get_password_by_username(self, username):
-        query = '''select hashed_password from user where username = :username'''
+    async def create_user(self, username, email, first_name, last_name):
+        user_id = str(uuid.uuid4())
 
-        res = await self.conn.execute(text(query), {'username': username})
-        res = res.fetchone()
-        return res._mapping.hashed_password if res else None
-    
-    async def create_user(self, username, email, first_name, last_name, hashed_password):
-        query = '''insert into user(username, email, first_name, last_name, hashed_password) values (:username, :email, :first_name, :last_name, :hashed_password)'''
-        await self.conn.execute(text(query), {'username': username, 'email': email, 'first_name': first_name, 'last_name': last_name,
-                                                  'hashed_password': hashed_password})
+        query = '''insert into user(id, username, email, first_name, last_name, created_at) 
+                    values (:user_id, :username, :email, :first_name, :last_name, :created_at)'''
+        await self.conn.execute(text(query), {'user_id': user_id, 'username': username, 'email': email, 'first_name': first_name, 'last_name': last_name, 
+                                              'created_at': get_current_time_utc()})
         await self.conn.commit()
         
-    async def make_user_verified(self, user_id):
-        query = '''update user 
-                   set verified = 1
-                   where id = :user_id '''
-                   
-        await self.conn.execute(text(query), {'user_id': user_id})
+    async def update_otp(self, username: str, otp: str, otp_expire: datetime):
+        query = '''update user
+                   set otp = :otp, otp_expire = :otp_expire, last_otp_request = :last_otp_request
+                   where username = :username'''
+        await self.conn.execute(text(query), {'otp': otp, 'otp_expire': otp_expire, 'last_otp_request': get_current_time_utc(), 'username': username})
         await self.conn.commit()
             
     async def delete_user(self, username):
@@ -203,10 +182,11 @@ class PromptTableOperation:
 
         
         req_id = str(uuid.uuid4())
-        query = '''insert into prompt_and_result(id, user_id, prompt_version, filename, dataset_cols, model)
-                    values (:id, :user_id, :prompt_version, :filename, :dataset_cols, :model)'''
+        query = '''insert into prompt_and_result(id, user_id, prompt_version, filename, dataset_cols, model, created_at)
+                    values (:id, :user_id, :prompt_version, :filename, :dataset_cols, :model, :created_at)'''
         await self.conn.execute(text(query), {'id': req_id, 'user_id': user_id, 'prompt_version': prompt_version, 
-                                              'filename': filename, 'dataset_cols': dataset_cols, 'model': model})
+                                              'filename': filename, 'dataset_cols': dataset_cols, 'model': model, 
+                                              'created_at': get_current_time_utc()})
         await self.conn.commit()
 
         return req_id
@@ -298,9 +278,9 @@ class TaskRunTableOperation:
         if not self.conn_sync:
             raise Exception('conn_sync object has not been instantiated')
         
-        query = '''insert into task_run(request_id, user_id, original_common_tasks) values (:request_id, :user_id, :original_common_tasks)'''
+        query = '''insert into task_run(request_id, user_id, original_common_tasks, created_at) values (:request_id, :user_id, :original_common_tasks, :created_at)'''
 
-        self.conn_sync.execute(text(query) ,{'request_id': request_id, 'user_id': user_id, 'original_common_tasks': original_common_tasks})
+        self.conn_sync.execute(text(query) ,{'request_id': request_id, 'user_id': user_id, 'original_common_tasks': original_common_tasks, 'created_at': get_current_time_utc()})
         self.conn_sync.commit()
     
     def update_task_result_sync(self, request_id: str, common_tasks_w_result: str):
@@ -450,7 +430,7 @@ if __name__ == '__main__':
         async with base_engine.connect() as conn:
             # ops = UserTableOperation(conn)
             # await ops.create_user(username='emperor22', email='xx@xx.com', first_name='andi', last_name='putra', hashed_password='satuduatiga')
-
+            await read_sql_async('delete from user', conn, True)
             await read_sql_async('delete from prompt_and_result', conn, True)
             await read_sql_async('delete from task_run', conn, True)
     asyncio.run(func())

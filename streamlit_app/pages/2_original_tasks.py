@@ -34,10 +34,8 @@ if st.session_state.imported[task_id]:
 
 if 'tasks' not in st.session_state:
     st.session_state.tasks = {}
-    
+
 if task_id not in st.session_state.tasks:
-    st.session_state.tasks[task_id] = []
-    
     tasks = get_original_tasks_by_id(task_id)
     
     if tasks:

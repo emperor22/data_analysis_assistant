@@ -121,19 +121,19 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
 
 @app.task(bind=True, base=DatabaseTask, name='tasks.get_additional_analyses_prompt_result', acks_late=True, time_limit=200, max_retries=3, rate_limit='15/m', 
           retry_backoff=True, retry_backoff_max=60, autoretry_for=retry_for_exceptions_get_prompt_task)
-def get_additional_analyses_prompt_result(self, model, additional_analyses_task_count, new_tasks_prompt, request_id, user_id):
+def get_additional_analyses_prompt_result(self, model, new_tasks_prompt, request_id, user_id):
 
     logger.info(f'additional analyses task request processed: request_id {request_id}, user_id {user_id}')
 
     start_time = time.perf_counter()
 
-    prompt_file = 'app/prompts/split_prompt/additional_tasks_req_prompt.md'
+    # prompt_file = 'app/prompts/split_prompt/additional_tasks_req_prompt.md'
     
     engine = self.get_engine()
     
-    # with engine.connect() as conn:
-    #     prompt_table_ops = PromptTableOperation(conn_sync=conn)
-    #     prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.waiting_for_additional_analysis_prompt_result.value)
+    with engine.connect() as conn:
+        prompt_table_ops = PromptTableOperation(conn_sync=conn)
+        prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.waiting_for_additional_analysis_prompt_result.value)
     
     #     resp_pt_1 = prompt_table_ops.get_prompt_result_sync(request_id=request_id, user_id=user_id)
         

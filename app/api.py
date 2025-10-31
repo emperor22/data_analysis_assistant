@@ -7,8 +7,8 @@ from pydantic import BaseModel
 from app.services import CsvReader, DatasetProcessorForPrompt, is_task_invalid_or_still_processing
 from app.tasks import get_prompt_result_task, data_processing_task, get_additional_analyses_prompt_result
 from app.crud import PromptTableOperation, UserTableOperation, TaskRunTableOperation, DATABASE_URL_SYNC, get_conn, get_prompt_table_ops, get_task_run_table_ops, get_user_table_ops
-from app.auth import create_access_token, get_current_user, get_hashed_password, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES
-from app.schemas import UserRegisterModel, ChangePasswordModel, DataTasks, TaskStatus
+from app.auth import create_access_token, get_current_user, generate_random_otp, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.schemas import UserRegisterModel, DataTasks
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -24,6 +24,8 @@ import time
 
 import sentry_sdk
 
+from datetime import datetime, timezone, timedelta
+
 # sentry_sdk.init(
 #     dsn="https://d3b5d645c124aaaf40eb877f11b8704a@o4510198724296704.ingest.us.sentry.io/4510198734520320",
 #     send_default_pii=True,
@@ -32,6 +34,8 @@ import sentry_sdk
 
 WARN_FOR_SLOW_RESPONSE_TIME = True
 THRES_SLOW_RESPONSE_TIME_MS = 1000
+
+OTP_EXPIRE_MINUTES = 5
 
 
 class LogRequestMiddleware(BaseHTTPMiddleware):
@@ -81,8 +85,8 @@ async def read_root():
 # check last user request time from prompt_and_result db and put it in pending if still within time limit
 
 @app.post('/upload_dataset')
-async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: int = Form(...), conn=Depends(get_conn), current_user=Depends(get_current_user), 
-                 prompt_table_ops=Depends(get_prompt_table_ops)):
+async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: int = Form(...), current_user=Depends(get_current_user), 
+                 prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
     # try:
     
     # these values needs to be obtained from user config
@@ -124,7 +128,7 @@ async def upload(file: UploadFile, model: str = Form(...), analysis_task_count: 
 
 @app.post('/execute_analyses')
 async def execute_analyses(data_tasks: DataTasks, request_id: str, current_user=Depends(get_current_user), 
-                           prompt_table_ops=Depends(get_prompt_table_ops)):
+                           prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
     user_id = current_user.user_id
     parquet_file = f'app/datasets/{request_id}.parquet'
     
@@ -140,16 +144,11 @@ async def execute_analyses(data_tasks: DataTasks, request_id: str, current_user=
     logger.info(f'modified task execution request added: request_id {request_id}, user_id {user_id}')
     
     return {'detail': 'analysis task executed'}
-
-class DataTasksRunInfo:
-    request_id: str
-    user_id: int
-    parquet_file: str
     
 
 @app.post('/make_additional_analyses_request')
 async def make_additional_analyses_request(model: str = Form(...), new_tasks_prompt: str = Form(...), request_id: str = Form(...), 
-                                           current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops)):
+                                           current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
     
     user_id = current_user.user_id
     
@@ -158,7 +157,6 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
         raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
     
     additional_analyses_prompt_res = await prompt_table_ops.get_additional_analyses_prompt_result(request_id, user_id)
-    additional_analyses_prompt_res = additional_analyses_prompt_res['additional_analyses_prompt_result']
     
     if additional_analyses_prompt_res is not None: # if user already run additional analyses on this req_id previously
         raise HTTPException(status_code=400, detail=f"can only execute one additional analyses request for one dataset")
@@ -180,8 +178,8 @@ async def make_additional_analyses_request(model: str = Form(...), new_tasks_pro
 
 
 @app.get('/get_original_tasks_by_id/{request_id}')
-async def get_original_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
-                                   task_run_table_ops=Depends(get_task_run_table_ops)):
+async def get_original_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                                   task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
@@ -198,8 +196,8 @@ async def get_original_tasks_by_id(request_id: str, current_user=Depends(get_cur
 
 
 @app.get('/get_modified_tasks_by_id/{request_id}')
-async def get_modified_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
-                                   task_run_table_ops=Depends(get_task_run_table_ops)):
+async def get_modified_tasks_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                                   task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
@@ -214,8 +212,8 @@ async def get_modified_tasks_by_id(request_id: str, current_user=Depends(get_cur
     return res
 
 @app.get('/get_col_info_by_id/{request_id}')
-async def get_col_info_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
-                             task_run_table_ops=Depends(get_task_run_table_ops)):
+async def get_col_info_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                             task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
@@ -230,8 +228,8 @@ async def get_col_info_by_id(request_id: str, current_user=Depends(get_current_u
     return res
 
 @app.get('/get_dataset_snippet_by_id/{request_id}')
-async def get_dataset_snippet_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops), 
-                                    task_run_table_ops=Depends(get_task_run_table_ops)):
+async def get_dataset_snippet_by_id(request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                                    task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
     user_id = current_user.user_id
 
     task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
@@ -248,7 +246,7 @@ async def get_dataset_snippet_by_id(request_id: str, current_user=Depends(get_cu
 
 
 @app.get('/get_request_ids')
-async def get_request_ids(current_user=Depends(get_current_user), prompt_table_ops=Depends(get_prompt_table_ops)):
+async def get_request_ids(current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
     user_id = current_user.user_id
     res = await prompt_table_ops.get_request_ids_by_user(user_id)
     
@@ -259,36 +257,107 @@ async def get_request_ids(current_user=Depends(get_current_user), prompt_table_o
 
 ################### USER ROUTES ###################
 
-@app.post('/token')
-async def login(form_data=Depends(OAuth2PasswordRequestForm), user_table_ops=Depends(get_user_table_ops)):
-    user = await user_table_ops.get_user(form_data.username)
-    password = await user_table_ops.get_password_by_username(form_data.username)
+
+from fastapi import FastAPI, BackgroundTasks
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from pydantic import EmailStr, BaseModel
+from typing import List
+import os 
+
+conf = ConnectionConfig(
+    MAIL_USERNAME='daaotpsender@gmail.com',
+    MAIL_PASSWORD='rfww zlil bhbl emjz',
+    MAIL_FROM='daaotpsender@gmail.com',
+    MAIL_PORT=587,
+    MAIL_SERVER='smtp.gmail.com',
+    MAIL_STARTTLS=True,
+    MAIL_SSL_TLS=False,
+    USE_CREDENTIALS=True,
+    VALIDATE_CERTS=True,
+)
+
+async def send_email(subject: str, recipients: list, body: str):
+    message = MessageSchema(
+        subject=subject,
+        recipients=recipients,
+        body=body,
+        subtype=MessageType.plain
+    )
     
-    if not user or not verify_password(form_data.password, password):
-        logger.warning(f'user {form_data.username} failed to log in')
+    fm = FastMail(conf)
+    
+    await fm.send_message(message)
+    
+class LoginInfo(BaseModel):
+    username: str
+    otp: str
+
+@app.post('/get_otp')
+async def get_otp(username: str, background_tasks: BackgroundTasks, user_table_ops: UserTableOperation = Depends(get_user_table_ops)):
+
+    user = await user_table_ops.get_user(username)
+    
+    if not user:
+        logger.warning(f'user {username} does not exist in db and tried to log in')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+    
+    if user['last_otp_request'] is not None:
+        last_otp_request = datetime.strptime(user['last_otp_request'], "%Y-%m-%d %H:%M:%S.%f%z")
         
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        if datetime.now(timezone.utc) < last_otp_request + timedelta(minutes=1): # if one minute has not passed since the last otp request
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="You need to wait one minute before requesting another OTP")
+    
+    otp = generate_random_otp()
+    otp_expire = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
+    
+    await user_table_ops.update_otp(username=username, otp=otp, otp_expire=otp_expire)
+    
+    recipients = [user['email']]
+    subject = 'OTP for Data Analysis Assistant app'
+    body = f'Your OTP is {otp}'
+    
+    background_tasks.add_task(send_email, subject, recipients, body)
+    
+    return {'detail': 'otp has been sent'}
+    
+
+
+
+@app.post('/token')
+async def login(login_info: LoginInfo, user_table_ops: UserTableOperation = Depends(get_user_table_ops)):
+    user = await user_table_ops.get_user(login_info.username)
+    user_otp = user['otp']
+
+    otp_expire = datetime.strptime(user['otp_expire'], "%Y-%m-%d %H:%M:%S.%f%z")
+
+    
+    if not user or not login_info.otp == user_otp:
+        logger.warning(f'user {login_info.username} failed to log in')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username")
+    
+    if datetime.now(timezone.utc) > otp_expire:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired OTP. Please generate a new one.")
     
     access_token = create_access_token(data={"sub": user.username}, 
                                        expire_minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
     logger.info(f'user {user.username} logged in')
     
+    # generate new otp to invalidate previous otp
+    otp = generate_random_otp()
+    otp_expire = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
+    
+    await user_table_ops.update_otp(username=user.username, otp=otp, otp_expire=otp_expire)
+    
     return {'access_token': access_token, 'token_type': 'bearer'}
 
 
 
 @app.post('/register_user')
-async def register_user(reg_model: UserRegisterModel, user_table_ops: UserTableOperation=Depends(get_user_table_ops)):
+async def register_user(reg_model: UserRegisterModel, user_table_ops: UserTableOperation = Depends(get_user_table_ops)):
     try:
-        hashed_pw = get_hashed_password(reg_model.password)
-        print(await user_table_ops.get_user('emperor22'))
         await user_table_ops.create_user(username=reg_model.username, email=reg_model.email, first_name=reg_model.first_name, 
-                                         last_name=reg_model.last_name, hashed_password=hashed_pw)
+                                         last_name=reg_model.last_name)
         
         logger.info(f'account {reg_model.username} successfully created')
         

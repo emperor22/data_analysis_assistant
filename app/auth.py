@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from app.crud import UserTableOperation, get_conn
 from app.schemas import GetCurrentUserModel
 
-
+import secrets
 
 SECRET_KEY = '6023ea54cbd56eed9d88d6ae008c6a14'
 ALGORITHM = "HS256"
@@ -22,7 +22,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-    
+def generate_random_otp():
+    return str(secrets.randbelow(1000000)).zfill(6)
+
+
 def create_access_token(data: dict, expire_minutes=None):
     to_encode = data.copy()
     expire_minutes = 120 if not expire_minutes else expire_minutes

@@ -43,15 +43,15 @@ If the requested task from the user request is gibberish, nonsensical, or imposs
 
 
 {
-  "name": "not applicable",
+  "name": "inapplicable",
   "task_id": 11, // or 12, 13, etc.
-  "description": "not applicable",
+  "description": "inapplicable",
   "steps": [
     {
-      "function": "not applicable"
+      "function": "inapplicable"
     }
   ],
-  "score": "not applicable"
+  "score": "inapplicable"
 }
 
 **Supported Functions**

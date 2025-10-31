@@ -26,26 +26,13 @@ class TaskStatus(Enum):
     
 class GetCurrentUserModel(BaseModel):
     username: str
-    user_id: int
+    user_id: str
     
 class UserRegisterModel(BaseModel):
     username: str
     email: str
     first_name: str
     last_name: str
-    password: str
-    
-class ChangePasswordModel(BaseModel):
-    current_pass: str
-    new_pass: str
-    new_pass_confirm: str    
-
-class ColumnInfo:
-    pass
-# idea: {'original_columns': [response from llm from columns section + num of unique values], 
-#        'added columns': [response from llm from column transform and column combination which are successfully created]}
-# maybe add these additional info: missing value total, skewness, duplicate values (give option to enable duplicate value removal if key columns are provided)
-
 
 
 class CommonColumnCombinationOperation(BaseModel):
@@ -308,7 +295,7 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
             valid_steps_num = filter_out_invalid_values(task.steps, model_key_func, STEP_MODELS, 'common_tasks', req_id, task.task_id)
             
             if len(valid_steps_num) < len(task.steps):
-                logger.warning(f"task discarded: task id {task['task_id']}") 
+                logger.warning(f"task discarded: task id {task.task_id}") 
             
             if len(valid_steps_num) == len(task.steps):
                 valid_values.append(task)

@@ -14,10 +14,20 @@ from string import Template, Formatter
 # URL = 'https://nginx/api'
 URL = 'http://localhost:8000'
 
-def submit_login_request(username, password):
-    body = {'username': username, 'password': password}
+def register_user(username, first_name, last_name, email):
+    body = {'username': username, 'first_name': first_name, 'last_name': last_name, 'email': email}
+    url = f'{URL}/register_user'
+    res = requests.post(url, verify=False, json=body)
+    
+    if res.status_code == 409:
+        return 'username/email already exists'
+    
+    return 'success'
+
+def submit_login_request(username, otp):
+    body = {'username': username, 'otp': otp}
     url = f'{URL}/token'
-    res = requests.post(url, verify=False, data=body)
+    res = requests.post(url, verify=False, json=body)
     
     if res.status_code == 401:
         return None
@@ -25,6 +35,22 @@ def submit_login_request(username, password):
         return res.json()
     except:
         st.write(res.text)
+
+def get_otp(username):
+    body = {'username': username}
+    url = f'{URL}/get_otp?username={username}'
+    res = requests.post(url, verify=False)
+    
+    if res.status_code == 401:
+        return 'invalid username'
+    
+    if res.status_code == 429:
+        return 'too many otp requests'
+    
+    if res.status_code != 200:
+        return 'internal error'
+    
+    return 'success'
 
 def show_unauthorized_error_and_redirect_to_login():
     st.session_state['authenticated'] = False
@@ -78,6 +104,9 @@ def include_auth_header(func):
                 show_unauthorized_error_and_redirect_to_login()
                 
             if res.status_code == 404:
+                return None
+            
+            if res.status_code == 400:
                 return None
 
             elif res.status_code == 200:
