@@ -5,6 +5,48 @@ import json
 
 from app.logger import logger
 
+@logger.catch
+def clean_dataset(df):
+    df = df.copy()
+    CONV_SUCCESS_RATE = 0.5
+
+    # for column names, strip, make lowercase, replace space and dash with _, and remove non-alphanum characters
+    df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_', regex=False).str.replace('-', '_') \
+                            .str.replace('[^a-z0-9_]', '', regex=True)
+    
+    # cleaning column values
+    for col in df.columns:
+        temp_series_nonull_idx = df[col].dropna().index # for later when getting conversion success rate only for non-null rows
+        # assume column is numeric and try to cast it to numeric type after cleaning
+        if df[col].dtype == 'object':
+            
+            # check if datetime
+            date_col_contains = ['date', 'timestamp', 'updated_at', 'created_at']
+            if any(s in col for s in date_col_contains):
+                
+                temp_series_dt = pd.to_datetime(df[col], errors='coerce')
+                temp_series_dt_nonull = temp_series_dt[temp_series_dt.index.isin(temp_series_nonull_idx)]
+                datetime_success_rate = 1 - (temp_series_dt_nonull.isna().sum() / len(temp_series_dt_nonull))
+                
+                if datetime_success_rate > CONV_SUCCESS_RATE:
+                    df[col] = temp_series_dt
+                    continue
+
+            # check if numeric
+            temp_series_numeric = pd.to_numeric(df[col].astype(str).str.replace(r'[^a-zA-Z0-9\s.]', '', regex=True), errors='coerce')
+            temp_series_numeric_nonull = temp_series_numeric[temp_series_numeric.index.isin(temp_series_nonull_idx)]
+
+            numeric_success_rate = 1 - (temp_series_numeric_nonull.isna().sum() / len(temp_series_numeric_nonull))
+            
+            if numeric_success_rate > CONV_SUCCESS_RATE: # more than x % of col values are successfully converted to numeric, so keep it 
+                df[col] = temp_series_numeric
+            else: # col is probably a string column
+                null_string_replace = ['', 'nan', None, 'null', 'n/a', 'na', 'none']
+                df[col] = df[col].astype(str).str.strip().str.lower().replace(null_string_replace, np.nan) # clean the string column
+        else:
+            continue # column is already numeric type and doesnt require cleaning
+        
+    return df
 
 def validate_columns(cols_to_check: str | list, column_list):
     if not cols_to_check:

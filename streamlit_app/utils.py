@@ -26,7 +26,7 @@ def register_user(username, first_name, last_name, email):
 
 def submit_login_request(username, otp):
     body = {'username': username, 'otp': otp}
-    url = f'{URL}/token'
+    url = f'{URL}/login'
     res = requests.post(url, verify=False, json=body)
     
     if res.status_code == 401:
@@ -37,9 +37,9 @@ def submit_login_request(username, otp):
         st.write(res.text)
 
 def get_otp(username):
-    body = {'username': username}
-    url = f'{URL}/get_otp?username={username}'
-    res = requests.post(url, verify=False)
+    url = f'{URL}/get_otp'
+    data = {'username': username}
+    res = requests.post(url, json=data, verify=False)
     
     if res.status_code == 401:
         return 'invalid username'
@@ -109,11 +109,10 @@ def include_auth_header(func):
             if res.status_code == 400:
                 return None
 
-            elif res.status_code == 200:
+            if res.status_code == 200:
                 return res.json()
             
-            else:
-                raise Exception(f'request returned an error: status code: {res.status_code}')
+            raise Exception(f'request returned an error: status code: {res.status_code}')
                 
         except Exception as e:
             st.error(f'An error occurred during the request: {e}')
@@ -199,7 +198,9 @@ def get_dataset_snippet_by_id(task_id, headers=None):
 
 @include_auth_header
 def send_tasks_to_process(data_tasks, task_id, headers=None):
-    url = f'{URL}/execute_analyses?request_id={task_id}'
+    url = f'{URL}/execute_analyses'
+    
+    data_tasks['request_id'] = task_id
     
     res = requests.post(url, verify=False,  data=json.dumps(data_tasks), headers=headers)
     
@@ -222,7 +223,7 @@ def make_additional_analyses_request(model, new_tasks_prompt, request_id, header
 
     data = {'model': model, 'new_tasks_prompt': new_tasks_prompt, 'request_id': request_id}
 
-    res = requests.post(url, verify=False, headers=headers, data=data)
+    res = requests.post(url, verify=False, headers=headers, data=json.dumps(data))
     
     return res
 

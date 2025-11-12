@@ -1,0 +1,76 @@
+{"common_tasks": [
+        {
+            "name": "Content Distribution by Country and Type",
+            "task_id": 1,
+            "description": "Analyze the count of movies and series available in each country to understand regional content focus.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "country_availability",
+                        "series_or_movie"
+                    ],
+                    "columns_to_aggregate": [
+                        "series_or_movie"
+                    ],
+                    "calculation": [
+                        "count"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Identify Top Genres by Hidden Gem Score",
+            "task_id": 2,
+            "description": "Determine the top 5 genres with the highest average 'hidden gem scores', indicating potentially undervalued content categories.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "genre"
+                    ],
+                    "columns_to_aggregate": [
+                        "hidden_gem_score"
+                    ],
+                    "calculation": [
+                        "mean"
+                    ]
+                },
+                {
+                    "function": "get_top_or_bottom_N_entries",
+                    "sort_by_column_name": "hidden_gem_score",
+                    "order": "top",
+                    "number_of_entries": 5,
+                    "return_columns": [
+                        "genre",
+                        "hidden_gem_score"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Critical Reception for Drama Content",
+            "task_id": 3,
+            "description": "Understand the proportion of 'Fresh' vs. 'Rotten' critical reception ratings specifically for content classified as 'drama'.",
+            "steps": [
+                {
+                    "function": "filter",
+                    "column_name": "genre",
+                    "operator": "in",
+                    "values": [
+                        "drama"
+                    ]
+                },
+                {
+                    "function": "get_proportion",
+                    "column_name": [
+                        "critical_reception_rating"
+                    ]
+                }
+            ],
+            "score": "high"
+        }
+]
+}

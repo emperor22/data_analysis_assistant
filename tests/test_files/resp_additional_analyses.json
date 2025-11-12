@@ -1,0 +1,50 @@
+{
+    "common_tasks": [
+        {
+            "name": "Identify top 5 best-rated American movies",
+            "task_id": 11,
+            "description": "Filter for movies available in the United States and identify the top 5 with the highest IMDb scores.",
+            "steps": [
+                {
+                    "function": "filter",
+                    "column_name": "series_or_movie",
+                    "operator": "in",
+                    "values": [
+                        "movie"
+                    ]
+                },
+                {
+                    "function": "filter",
+                    "column_name": "country_availability",
+                    "operator": "in",
+                    "values": [
+                        "united states"
+                    ]
+                },
+                {
+                    "function": "get_top_or_bottom_N_entries",
+                    "sort_by_column_name": "imdb_score",
+                    "order": "top",
+                    "number_of_entries": 5,
+                    "return_columns": [
+                        "title",
+                        "imdb_score",
+                        "country_availability"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "inapplicable",
+            "task_id": 12,
+            "description": "inapplicable",
+            "steps": [
+                {
+                    "function": "inapplicable"
+                }
+            ],
+            "score": "inapplicable"
+        }
+    ]
+}

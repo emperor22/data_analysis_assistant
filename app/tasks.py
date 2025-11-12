@@ -5,7 +5,7 @@ import time
 from app.services import get_prompt_result, process_llm_api_response, DataAnalysisProcessor, insert_prompt_context, cleanup_agg_col_names
 from app.crud import TaskRunTableOperation, PromptTableOperation, base_engine_sync
 
-from app.schemas import DataTasks, DatasetAnalysisModelPartOne, DatasetAnalysisModelPartTwo, TaskStatus
+from app.schemas import DataTasks, DatasetAnalysisModelPartOne, DatasetAnalysisModelPartTwo, TaskStatus, RunInfoSchema
 from app.logger import logger
 from pydantic import ValidationError
 from requests.exceptions import RequestException
@@ -14,15 +14,24 @@ from typing import Literal
 THRES_SLOW_INITIAL_REQUEST_PROCESS_TIME_MS = 90 * 1000
 THRES_SLOW_ADDITIONAL_ANALYSES_REQUEST_PROCESS_TIME_MS = 45 * 1000
 THRES_SLOW_TASK_EXECUTION_PROCESS_TIME_MS = 7 * 1000
+
 REDIS_URL = 'redis://localhost:6379/0'
 # REDIS_URL = 'redis://redis:6379/0'
+
+ADDT_REQ_PROMPT_TEMPLATE = 'app/prompts/split_prompt/additional_tasks_req_prompt.md'
+PT2_PROMPT_TEMPLATE = 'app/prompts/split_prompt/prompt_part2.md'
+
+
+MOCK_PROMPT_RESULT = False
+PT1_PROMPT_MOCK_FILE = ''
+PT2_PROMPT_MOCK_FILE = ''
+ADDT_REQ_PROMPT_MOCK_FILE = ''
 
 app = Celery('tasks', backend=REDIS_URL, broker=REDIS_URL)
 app.conf.task_routes = {'tasks.get_prompt_result_task': {'queue': 'get_prompt_res_queue'}, 
                         'tasks.get_additional_analyses_prompt_result': {'queue': 'get_prompt_res_queue'},
                         'tasks.data_processing_task': {'queue': 'data_processing_queue'}
                         }
-
 
 
 class DatabaseTask(app.Task):
@@ -45,55 +54,53 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
     # TO DO:
     # catch requestlimit error and throttle for 60 seconds
     # llm api request limit reset at midnight pacific time
+    
     engine = self.get_engine() 
     
-    # with engine.connect() as conn:
-    #     prompt_table_ops = PromptTableOperation(conn_sync=conn)
-    #     prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.waiting_for_initial_request_prompt.value)
+    with engine.connect() as conn:
+        prompt_table_ops = PromptTableOperation(conn_sync=conn)
+        prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.waiting_for_initial_request_prompt.value)
     
-    # # getting result for prompt part 1
-    # resp_pt_1 = get_prompt_result(prompt_pt_1, model)     
-    # resp_pt_1 = process_llm_api_response(resp_pt_1)
-    
-    # with open(f'resp_jsons/resp_pt1.json', 'w') as f:       # writing to file to check result directly for debugging
-    #     f.write(json.dumps(resp_pt_1, indent=4))
-    
-    with open(f'resp_jsons/resp_pt1.json', 'r') as f:      # mocking part 1 response
-        resp_pt_1 = json.load(f)
+    # getting result for prompt part 1
+    if not (MOCK_PROMPT_RESULT and PT1_PROMPT_MOCK_FILE):
+        resp_pt_1 = get_prompt_result(prompt_pt_1, model)     
+        resp_pt_1 = process_llm_api_response(resp_pt_1)
+    else:
+        logger.info('part 2 prompt mocked')
+        with open(PT1_PROMPT_MOCK_FILE, 'r') as f:      # mocking part 1 response
+            resp_pt_1 = json.load(f)
     
     try:
         resp_pt_1 = DatasetAnalysisModelPartOne.model_validate(resp_pt_1, context={'required_cols': dataset_cols, 'request_id': request_id})
     except ValidationError:
-        logger.exception(f'failed first part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_1}')
+        logger.exception(f'failed 1st part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_1}')
         raise
     
     resp_pt_1 = resp_pt_1.model_dump()
 
-    # # getting result for prompt part 2
-    # prompt_pt_2_file = 'app/prompts/split_prompt/prompt_part2.md'
-    # prompt_2_context = {'context_json': resp_pt_1, 'task_count': task_count}
-    # prompt_pt_2 = insert_prompt_context(prompt_file=prompt_pt_2_file, context=prompt_2_context)
+    # getting result for prompt part 2
+    prompt_pt_2_file = PT2_PROMPT_TEMPLATE
+    prompt_2_context = {'context_json': resp_pt_1, 'task_count': task_count}
+    prompt_pt_2 = insert_prompt_context(prompt_file=prompt_pt_2_file, context=prompt_2_context)
     
-    # resp_pt_2 = get_prompt_result(prompt_pt_2, model)     
-    # resp_pt_2 = process_llm_api_response(resp_pt_2)
-    
-    # with open(f'resp_jsons/resp_pt2.json', 'w') as f:     # writing to file to check result directly for debugging
-    #     f.write(json.dumps(resp_pt_2, indent=4))
-    
-    with open(f'resp_jsons/resp_pt2.json', 'r') as f:        # mocking part 2 response
-        resp_pt_2 = json.load(f)
+    if not (MOCK_PROMPT_RESULT and PT2_PROMPT_MOCK_FILE):
+        resp_pt_2 = get_prompt_result(prompt_pt_2, model)     
+        resp_pt_2 = process_llm_api_response(resp_pt_2)
+    else:
+        logger.info('part 2 prompt mocked')
+        with open(PT2_PROMPT_MOCK_FILE, 'r') as f:      # mocking part 2 response
+            resp_pt_2 = json.load(f)
     
     try:
         resp_pt_2 = DatasetAnalysisModelPartTwo.model_validate(resp_pt_2, context={'run_type': 'first_run_after_request', 'request_id': request_id})
     except ValidationError:
-        logger.exception(f'failed first part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_2}')
+        logger.exception(f'failed 2nd part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_2}')
         raise
     
     resp_pt_2 = resp_pt_2.model_dump()
     
     # handle cases where a step's column contains _{agg} suffix when its preceded by a groupby step
     resp_pt_2 = cleanup_agg_col_names(resp_pt_2=resp_pt_2, resp_pt_1=resp_pt_1)
-
     result = {**resp_pt_1, **resp_pt_2}
     
     with engine.connect() as conn:
@@ -102,13 +109,10 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
         prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.initial_request_prompt_received.value)
 
     # write response, token_count to main table
-    
-    data_tasks = DataTasks(
-        columns=result['columns'],
-        common_tasks=result['common_tasks'], 
-        common_column_cleaning_or_transformation=result['common_column_cleaning_or_transformation'],
-        common_column_combination=result['common_column_combination']
-        )
+    data_tasks_fields = ['columns', 'common_tasks', 'common_column_cleaning_or_transformation', 'common_column_combination']
+    data_tasks_dct = {k: v for k, v in result.items() if k in data_tasks_fields}
+
+    data_tasks = DataTasks.model_validate(data_tasks_dct)
     
     process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
@@ -127,7 +131,7 @@ def get_additional_analyses_prompt_result(self, model, new_tasks_prompt, request
 
     start_time = time.perf_counter()
 
-    # prompt_file = 'app/prompts/split_prompt/additional_tasks_req_prompt.md'
+    prompt_template = ADDT_REQ_PROMPT_TEMPLATE
     
     engine = self.get_engine()
     
@@ -135,29 +139,27 @@ def get_additional_analyses_prompt_result(self, model, new_tasks_prompt, request
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.waiting_for_additional_analysis_prompt_result.value)
     
-    #     resp_pt_1 = prompt_table_ops.get_prompt_result_sync(request_id=request_id, user_id=user_id)
+        resp_pt_1 = prompt_table_ops.get_prompt_result_sync(request_id=request_id, user_id=user_id)
         
-    # if not resp_pt_1:
-    #     raise Exception('the requested prompt result does not exist')
+    if not resp_pt_1:
+        raise Exception('the requested prompt result does not exist')
     
-    # resp_pt_1 = json.loads(resp_pt_1['prompt_result'])
+    resp_pt_1 = json.loads(resp_pt_1['prompt_result'])
     
-    # context_json = {}
-    # for field in ['columns', 'common_column_cleaning_or_transformation', 'common_column_combination']:
-    #     context_json[field] = resp_pt_1[field]
+    context_json = {}
+    for field in ['columns', 'common_column_cleaning_or_transformation', 'common_column_combination']:
+        context_json[field] = resp_pt_1[field]
     
     
-    # context = {'context_json': json.dumps(context_json), 'new_tasks_prompt': new_tasks_prompt}
-    # prompt = insert_prompt_context(prompt_file=prompt_file, context=context)
+    context = {'context_json': json.dumps(context_json), 'new_tasks_prompt': new_tasks_prompt}
+    prompt = insert_prompt_context(prompt_file=prompt_template, context=context)
     
-    # resp = get_prompt_result(prompt, model)     
-    # resp = process_llm_api_response(resp)
-    
-    # with open(f'resp_jsons/resp_additional_analyses.json', 'w') as f:
-    #     f.write(json.dumps(resp, indent=4))
-    
-    with open(f'resp_jsons/resp_additional_analyses.json', 'r') as f:
-        resp = json.load(f)
+    if not (MOCK_PROMPT_RESULT and ADDT_REQ_PROMPT_MOCK_FILE):
+        resp = get_prompt_result(prompt, model)     
+        resp = process_llm_api_response(resp)
+    else:
+        with open(ADDT_REQ_PROMPT_MOCK_FILE, 'r') as f:
+            resp = json.load(f)
     
     try:
         resp = DatasetAnalysisModelPartTwo.model_validate(resp, context={'run_type': 'additional_analyses_request', 'request_id': request_id})
@@ -185,10 +187,12 @@ def get_additional_analyses_prompt_result(self, model, new_tasks_prompt, request
     return data_tasks.model_dump()
 
 @app.task(bind=True, base=DatabaseTask, name='tasks.data_processing_task', acks_late=True, ignore_result=True, time_limit=20, max_retries=3)
-def data_processing_task(self, data_tasks, run_info, 
+def data_processing_task(self, data_tasks_dict, run_info: RunInfoSchema, 
                          run_type: Literal['first_run_after_request', 'modified_tasks_execution', 'additional_analyses_request']):
-    logger.info(f"task execution request processed: run type {run_type}, request_id {run_info['request_id']}, user_id {run_info['user_id']}")
-
+    request_id = run_info['request_id']
+    user_id = run_info['user_id']
+    
+    logger.info(f"task execution request processed: run type {run_type}, request_id {request_id}, user_id {user_id}")
     
     start_time = time.perf_counter()
     
@@ -204,16 +208,16 @@ def data_processing_task(self, data_tasks, run_info,
     
     with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
-        prompt_table_ops.change_request_status_sync(request_id=run_info['request_id'], status=starting_status_dct[run_type])
+        prompt_table_ops.change_request_status_sync(request_id=request_id, status=starting_status_dct[run_type])
     
-    data_tasks = DataTasks.model_validate(data_tasks)
+    data_tasks = DataTasks.model_validate(data_tasks_dict)
     common_tasks = [i.model_dump() for i in data_tasks.common_tasks]
     
     with engine.connect() as conn:
         task_run_table_ops = TaskRunTableOperation(conn_sync=conn)
         
         if run_type == 'first_run_after_request': # if the run is the first task run right after the llm resp request
-            task_run_table_ops.add_task_result_sync(request_id=run_info['request_id'], user_id=run_info['user_id'], 
+            task_run_table_ops.add_task_result_sync(request_id=request_id, user_id=user_id, 
                                                     original_common_tasks=json.dumps({'original_common_tasks': common_tasks})
                                                     )
         
@@ -222,19 +226,14 @@ def data_processing_task(self, data_tasks, run_info,
         
     with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
-        prompt_table_ops.change_request_status_sync(request_id=run_info['request_id'], status=finished_status_dct[run_type])
-        
-        if run_type == 'first_run_after_request':
-            final_dataset_snippet = processor.get_final_dataset_snippet()
-            task_run_table_ops = TaskRunTableOperation(conn_sync=conn)
-            task_run_table_ops.update_final_dataset_snippet_sync(request_id=run_info['request_id'], dataset_snippet=final_dataset_snippet)
+        prompt_table_ops.change_request_status_sync(request_id=request_id, status=finished_status_dct[run_type])
     
     process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
     
-    logger.info(f"task execution request finished in {process_time_ms} ms: run type {run_type}, request_id {run_info['request_id']}, user_id {run_info['user_id']}")
+    logger.info(f"task execution request finished in {process_time_ms} ms: run type {run_type}, request_id {request_id}, user_id {user_id}")
 
     if process_time_ms > THRES_SLOW_TASK_EXECUTION_PROCESS_TIME_MS:
-        logger.warning(f"slow task execution request processing time ({process_time_ms} ms): run_type {run_type}, request_id {run_info['request_id']}, user_id {run_info['user_id']}")
+        logger.warning(f"slow task execution request processing time ({process_time_ms} ms): run_type {run_type}, request_id {request_id}, user_id {user_id}")
     
         
 

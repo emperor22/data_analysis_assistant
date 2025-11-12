@@ -1,0 +1,535 @@
+{
+    "domain": "Entertainment Content Analysis",
+    "description": "Analysis of movies and series metadata, including ratings, availability, and production details, likely for a streaming platform like Netflix. The dataset provides comprehensive information for content curation and performance evaluation.",
+    "columns": [
+        {
+            "name": "title",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "godzilla",
+                "kingdom",
+                "persona",
+                "shameless",
+                "full house"
+            ]
+        },
+        {
+            "name": "genre",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "comedy",
+                "drama",
+                "documentary",
+                "comedy, drama"
+            ]
+        },
+        {
+            "name": "tags",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "dramas",
+                "nan",
+                "comedies,stand-up comedy",
+                "stand-up comedy,comedies",
+                "comedies"
+            ]
+        },
+        {
+            "name": "languages",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "english",
+                "nan",
+                "japanese",
+                "korean",
+                "spanish"
+            ]
+        },
+        {
+            "name": "series_or_movie",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "movie",
+                "series"
+            ]
+        },
+        {
+            "name": "hidden_gem_score",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "",
+            "expected_values": [
+                "4.3 - 8.3"
+            ]
+        },
+        {
+            "name": "country_availability",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "japan",
+                "south korea",
+                "united kingdom",
+                "switzerland,germany",
+                "united states"
+            ]
+        },
+        {
+            "name": "runtime",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "minutes",
+            "expected_values": [
+                "1-2 hour",
+                "< 30 minutes",
+                "> 2 hrs",
+                "30-60 mins",
+                "nan"
+            ]
+        },
+        {
+            "name": "director",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "steven spielberg",
+                "ra\u00fal campos, jan suter",
+                "woody allen",
+                "johnnie to"
+            ]
+        },
+        {
+            "name": "writer",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "fujio f. fujiko",
+                "woody allen",
+                "jing wong",
+                "pedro almod\u00f3var"
+            ]
+        },
+        {
+            "name": "actors",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "noriko ohara, nobuyo \u00f4yama, kaneta kimotsuki, michiko nomura",
+                "liam neeson, ewan mcgregor, natalie portman, jake lloyd",
+                "in\u00e9s sainz, luis ernesto franco, rafinha bastos, tiki barber",
+                "priyanka chopra, shah rukh khan, isha koppikar, arjun rampal"
+            ]
+        },
+        {
+            "name": "view_rating",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "r",
+                "pg-13",
+                "not rated",
+                "tv-ma"
+            ]
+        },
+        {
+            "name": "imdb_score",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "",
+            "expected_values": [
+                "4.3 - 7.9"
+            ]
+        },
+        {
+            "name": "rotten_tomatoes_score",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "%",
+            "expected_values": [
+                "50.0 - 100.0"
+            ]
+        },
+        {
+            "name": "metacritic_score",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "",
+            "expected_values": [
+                "46.0 - 82.0"
+            ]
+        },
+        {
+            "name": "awards_received",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "count",
+            "expected_values": [
+                "1.0 - 74.0"
+            ]
+        },
+        {
+            "name": "awards_nominated_for",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "count",
+            "expected_values": [
+                "1.0 - 57.0"
+            ]
+        },
+        {
+            "name": "boxoffice",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Numerical",
+            "unit": "USD",
+            "expected_values": [
+                "$509 - $474,544,677"
+            ]
+        },
+        {
+            "name": "release_date",
+            "classification": "Temporal",
+            "confidence_score": "medium",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "",
+            "expected_values": [
+                "12016.0 - 282020.0"
+            ]
+        },
+        {
+            "name": "netflix_release_date",
+            "classification": "Temporal",
+            "confidence_score": "high",
+            "data_type": "datetime",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "2015-04-14",
+                "2020-12-12",
+                "2015-09-01",
+                "2018-10-01",
+                "2020-11-27"
+            ]
+        },
+        {
+            "name": "production_house",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "netflix",
+                "paramount pictures",
+                "universal pictures",
+                "columbia pictures corporation"
+            ]
+        },
+        {
+            "name": "netflix_link",
+            "classification": "Identifier",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "https://www.netflix.com/watch/70241791",
+                "https://www.netflix.com/watch/81415947",
+                "https://www.netflix.com/watch/81041267",
+                "https://www.netflix.com/watch/81305978",
+                "https://www.netflix.com/watch/81336456"
+            ]
+        },
+        {
+            "name": "imdb_link",
+            "classification": "Identifier",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "https://www.imdb.com/title/tt0120915",
+                "https://www.imdb.com/title/tt5607970",
+                "https://www.imdb.com/title/tt0461936",
+                "https://www.imdb.com/title/tt2582782"
+            ]
+        },
+        {
+            "name": "summary",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "a surly septuagenarian gets another chance at her 20s after having her photo snapped at a studio that magically takes 50 years off her life.",
+                "sing and dance along with pinkfong and friends as they learn new words and fun rhymes about animals, cars and dinosaurs.",
+                "an elite group of young warriors trained in morals and martial arts finds love and friendship in silla during korea\u2019s ancient three kingdoms period.",
+                "young trainer ash and his new friend goh become research fellows at professor cerises laboratory, traveling all over the world to learn about pok\u00e9mon."
+            ]
+        },
+        {
+            "name": "imdb_votes",
+            "classification": "Metric",
+            "confidence_score": "high",
+            "data_type": "float",
+            "type": "Numerical",
+            "unit": "count",
+            "expected_values": [
+                "63.0 - 205926.0"
+            ]
+        },
+        {
+            "name": "image",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "https://occ-0-37-33.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabtdjkhul3ec8ls7s_e_bz5_bdt49mc8ajyxu93pdrk5ume73iofrwrlvxpdjjj9flawtyxvtmzgxo2xj_wuwggd1ujh9jvxsqcs6fhwd4awddf2hkjrevbpobo0.jpg?r=647",
+                "https://occ-0-4708-64.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabcmglcxn8dnahdy2kgd1hhcl2a6xre92x24bx5h6jfuvh5zmrv6lfwl_awmt33b6dhvkgsuedx_8q1rmopwt3fuf8rq3s1hrkvff3uzvv2sb3zrtu-lm1zy1ffrakd3nknya_rqwrmw.jpg?r=cd0",
+                "https://occ-0-1081-999.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabe_fxmsbm1e-ssoszr12smki-498sqbwreyhkchdn4uklqvjdops_hj-nhvgbepvwldszmtcrie0kgiy-zteu_eagg.jpg?r=35a",
+                "https://occ-0-1081-999.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabw-fg-2_s3pgsbdbw4nlcwencrkl2ngj7kv5_qqvgz--gt8eg-blyjzm9zaag5kayhefo77975pkatz3yza1zlqwgq.jpg?r=66b",
+                "https://occ-0-1489-1490.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabeq3p0f50kpnqtymozdpuenqxi3bh3hadry-ympoor0_hm2vzuqizq1v7oihe9imlxazc72w9httdbroorqt-wvkaa.jpg?r=f82"
+            ]
+        },
+        {
+            "name": "poster",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "https://m.media-amazon.com/images/m/mv5bytrhnjcwnwqtmgjmmi00nmqylwe2yzitodvmmtdjnwi0zda2xkeyxkfqcgdeqxvyntayodkwoq@@._v1_sx300.jpg",
+                "https://m.media-amazon.com/images/m/mv5bmzaymwe0mjgtmdvjns00zdmylwe4njqtnwu2zdgyytlmmjdjxkeyxkfqcgdeqxvynjq2mjq5nzm@._v1_sx300.jpg",
+                "https://images-na.ssl-images-amazon.com/images/m/mv5bmjkxmjm5mtkzm15bml5banbnxkftztgwndawodizmti@._v1_sx300.jpg",
+                "https://m.media-amazon.com/images/m/mv5bmtg4nda1ota5nf5bml5banbnxkftztgwmdq2mdm5ode@._v1_sx300.jpg"
+            ]
+        },
+        {
+            "name": "tmdb_trailer",
+            "classification": "Descriptive",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "https://www.youtube.com/watch?v=bd7bpg-zdjq",
+                "https://www.youtube.com/watch?v=sejubrgzpz4",
+                "https://www.youtube.com/watch?v=_cjriafr2pe",
+                "https://www.youtube.com/watch?v=myvb4olk4nq"
+            ]
+        },
+        {
+            "name": "trailer_site",
+            "classification": "Dimensional",
+            "confidence_score": "high",
+            "data_type": "string",
+            "type": "Categorical",
+            "unit": "",
+            "expected_values": [
+                "nan",
+                "youtube",
+                "vimeo"
+            ]
+        }
+    ],
+    "common_column_combination": [
+        {
+            "name": "average_critic_score",
+            "description": "Calculates the average score from Rotten Tomatoes and Metacritic, providing a combined critic reception metric.",
+            "operation": {
+                "source_columns": [
+                    "rotten_tomatoes_score",
+                    "metacritic_score"
+                ],
+                "expression": "(rotten_tomatoes_score + metacritic_score) / 2"
+            }
+        },
+        {
+            "name": "total_awards_recognition",
+            "description": "Sums the number of awards received and nominations to get a total count of industry recognition.",
+            "operation": {
+                "source_columns": [
+                    "awards_received",
+                    "awards_nominated_for"
+                ],
+                "expression": "awards_received + awards_nominated_for"
+            }
+        },
+        {
+            "name": "weighted_imdb_score",
+            "description": "Calculates a weighted IMDb score by multiplying the IMDb score by the number of IMDb votes, indicating popularity adjusted by rating.",
+            "operation": {
+                "source_columns": [
+                    "imdb_score",
+                    "imdb_votes"
+                ],
+                "expression": "imdb_score * imdb_votes"
+            }
+        },
+        {
+            "name": "hidden_gem_score_difference",
+            "description": "Measures the difference between the hidden gem score and the standard IMDb score, which could indicate undervalued content.",
+            "operation": {
+                "source_columns": [
+                    "hidden_gem_score",
+                    "imdb_score"
+                ],
+                "expression": "hidden_gem_score - imdb_score"
+            }
+        },
+        {
+            "name": "critic_score_variance",
+            "description": "Measures the variance between Rotten Tomatoes and Metacritic scores to highlight critical disagreement.",
+            "operation": {
+                "source_columns": [
+                    "rotten_tomatoes_score",
+                    "metacritic_score"
+                ],
+                "expression": "abs(rotten_tomatoes_score - metacritic_score)"
+            }
+        }
+    ],
+    "common_column_cleaning_or_transformation": [
+        {
+            "name": "netflix_release_year",
+            "description": "Extracts the year from the Netflix release date for temporal analysis.",
+            "operation": {
+                "type": "date_op",
+                "source_column": "netflix_release_date",
+                "function": "YEAR"
+            }
+        },
+        {
+            "name": "content_runtime_category",
+            "description": "Categorizes content runtime into simplified groups (Short, Medium, Long, Very Long) for easier filtering.",
+            "operation": {
+                "type": "map",
+                "source_column": "runtime",
+                "mapping": {
+                    "< 30 minutes": "Short",
+                    "30-60 mins": "Medium",
+                    "1-2 hour": "Long",
+                    "> 2 hrs": "Very Long",
+                    "nan": "Unknown"
+                }
+            }
+        },
+        {
+            "name": "imdb_score_tier",
+            "description": "Bins the IMDb score into qualitative tiers (Low, Medium, High) to categorize content quality.",
+            "operation": {
+                "type": "map_range",
+                "source_column": "imdb_score",
+                "ranges": [
+                    {
+                        "range": "0-5.9",
+                        "label": "Low"
+                    },
+                    {
+                        "range": "6.0-7.4",
+                        "label": "Medium"
+                    },
+                    {
+                        "range": "7.5-10.0",
+                        "label": "High"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "critical_reception_rating",
+            "description": "Maps Rotten Tomatoes scores into simplified 'Fresh' or 'Rotten' categories based on common critical thresholds.",
+            "operation": {
+                "type": "map_range",
+                "source_column": "rotten_tomatoes_score",
+                "ranges": [
+                    {
+                        "range": "0-59",
+                        "label": "Rotten"
+                    },
+                    {
+                        "range": "60-100",
+                        "label": "Fresh"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "combined_audience_score",
+            "description": "Calculates an average of IMDb and Hidden Gem scores to represent a general audience quality assessment.",
+            "operation": {
+                "type": "math_op",
+                "source_columns": [
+                    "imdb_score",
+                    "hidden_gem_score"
+                ],
+                "expression": "(imdb_score + hidden_gem_score) / 2"
+            }
+        }
+    ]
+}

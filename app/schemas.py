@@ -24,11 +24,15 @@ class TaskStatus(Enum):
     additional_tasks_run_finished = 'ADDITIONAL ANALYSES TASKS FINISHED'
     customized_tasks_run_finished = 'USER CUSTOMIZED ANALYSIS TASKS FINISHED'
     
+from typing import TypedDict
+
+RunInfoSchema = TypedDict('RunInfoSchema', {'request_id': str, 'user_id': str, 'parquet_file': str})
+    
 class GetCurrentUserModel(BaseModel):
     username: str
     user_id: str
     
-class UserRegisterModel(BaseModel):
+class UserRegisterSchema(BaseModel):
     username: str
     email: str
     first_name: str
@@ -42,17 +46,17 @@ class CommonColumnCombinationOperation(BaseModel):
     model_config = ConfigDict(extra='forbid')
     
     @model_validator(mode='after')
-    def check_if_columns_match_expression(self, model_instance):
+    def check_if_columns_match_expression(self):
         regex = r'\b(?![0-9]+(\.[0-9]+)?\b)([a-zA-Z0-9_]+)\b'
-        expression = model_instance.expression
-        source_cols = model_instance.source_columns
+        expression = self.expression
+        source_cols = self.source_columns
         
         matches = re.finditer(regex, expression)
         matches = [match.group(2) for match in matches]
         
         if not sorted(matches) == sorted(source_cols):
             raise ValueError('columns in expressions dont match source columns')
-        return model_instance
+        return self
     
 class CommonColumnCombinationModel(BaseModel):
     name: str
@@ -97,17 +101,17 @@ class MathOpOperation(BaseModel):
     model_config = ConfigDict(extra='forbid')
     
     @model_validator(mode='after')
-    def check_if_columns_match_expression(self, model_instance):
+    def check_if_columns_match_expression(self):
         regex = r'\b(?![0-9]+(\.[0-9]+)?\b)([a-zA-Z0-9_]+)\b'
-        expression = model_instance.expression
-        source_cols = model_instance.source_columns
+        expression = self.expression
+        source_cols = self.source_columns
         
         matches = re.finditer(regex, expression)
         matches = [match.group(2) for match in matches]
         
         if not sorted(matches) == sorted(source_cols):
             raise ValueError('columns in expressions dont match source columns')
-        return model_instance
+        return self
 
 class CommonColumnCleaningOrTransformationModel(BaseModel):
     name: str
@@ -149,13 +153,13 @@ class GroupByStepModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
     
     @model_validator(mode='after')
-    def check_count_count_aggregation(self, model_instance):
-        group_cols = model_instance.columns_to_group_by
-        agg_cols = model_instance.columns_to_aggregate
+    def check_count_count_aggregation(self):
+        group_cols = self.columns_to_group_by
+        agg_cols = self.columns_to_aggregate
         
         if sorted(group_cols) == sorted(agg_cols):
             raise ValueError('similar columns for groupby-aggregate pair')
-        return model_instance
+        return self
 
 class TopBottomNStepModel(BaseModel):
     function: Literal['get_top_or_bottom_N_entries']
@@ -311,7 +315,15 @@ class DataTasks(BaseModel):
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
     common_column_combination: list[CommonColumnCombinationModel] = []
 
-    model_config = ConfigDict(extra='forbid')  
+    model_config = ConfigDict(extra='forbid')
+    
+class ExecuteAnalysesSchema(DataTasks):
+    request_id: str
+    
+class AdditionalAnalysesRequestSchema(BaseModel):
+    model: str
+    new_tasks_prompt: str
+    request_id: str
     
 
 if __name__ == '__main__':
