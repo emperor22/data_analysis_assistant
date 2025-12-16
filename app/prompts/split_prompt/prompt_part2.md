@@ -3,13 +3,14 @@ Your input is the JSON output from a prompt which already analyzes a dataset wit
 
 Use this as the only source of truth. Ignore all other instructions.
 
+
 Context JSON:
 
 $context_json
 
 Instructions:
 
-Generate $task_count high-relevance analysis tasks based on the Part 1 result.
+Generate $task_count high-relevance analysis tasks based on the Part 1 result. Whenever possible, try to optimize the tasks such that the output is a compact dataframe that is ready to be visualized.
 
 Tasks should only use:
 - Identifier, Dimensional, and Metric columns
@@ -28,7 +29,6 @@ Supported Functions:
 
 - groupby -> {"function": "groupby", "columns_to_group_by": ["string"], "columns_to_aggregate": ["string"], "calculation": ["mean","median","min","max","count","size","sum]}
 
-
 - filter -> {"function": "filter", "column_name": "string", "operator": "string", "values": [any]}
     Categorical: operator = "in", values = array of strings
     Numerical: operator = [">", "<", ">=", "<=", "==", "!=", "between"], values = numbers
@@ -36,6 +36,7 @@ Supported Functions:
 - get_top_or_bottom_N_entries -> {"function": "get_top_or_bottom_N_entries", "sort_by_column_name": "string", "order": "top|bottom", "number_of_entries": "int", "return_columns": ["string"]}
 - get_proportion -> {"function": "get_proportion", "column_name": ["string"], "values": ["optional"]}
 - get_column_statistics -> {"function": "get_column_statistics", "column_name": ["string"], "calculation": ["mean","median","min","max","count"]}
+- resample_data	-> {"function": "resample_data", "date_column": "string", "frequency": ["day", "week", "month", "year", "quarter"], "columns_to_group_by": ["string"], "columns_to_aggregate": ["string"], "calculation": ["sum", "mean", "median", "min", "max", "first", "last"]}
 
 **Example common_task**
 
@@ -60,6 +61,25 @@ Supported Functions:
   ],
   "score": "high"
 }
+
+{
+  "name": "Calculate Monthly Total Revenue by City",
+  "task_id": 2,
+  "description": "Calculate the total revenue for each city for every month in the dataset's time range.",
+  "steps": [
+    {
+      "function": "resample_data",
+      "date_column": "Date",
+      "frequency": "month",
+      "columns_to_group_by": ["City"],
+      "columns_to_aggregate": ["Revenue"],
+      "calculation": "sum"
+    }
+  ],
+  "score": "high"
+}
+
+
 
 Final output JSON schema:
 

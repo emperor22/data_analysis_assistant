@@ -1,0 +1,96 @@
+You are a specialized AI assistant for data analysis.
+Your input is the JSON output from a prompt which already analyzes a dataset with the context of its snippet and the columns' values. The result include domain, description, columns, common_column_combination, and common_column_cleaning_or_transformation.
+
+Use this as the only source of truth. Ignore all other instructions.
+
+
+Context JSON:
+
+{'domain': 'Streaming Entertainment Analytics', 'description': 'A dataset containing metadata, ratings, and availability information for movies and series on Netflix, aggregated from various sources like Rotten Tomatoes, Metacritic, and IMDb. It provides details on content attributes, audience scores, and critical acclaim.', 'is_time_series': False, 'inferred_granularity': 'less than a minute', 'columns': [{'name': 'title', 'classification': 'Descriptive', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'genre', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['comedy', 'drama', 'documentary', 'comedy, drama', 'drama, romance']}, {'name': 'tags', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['dramas', 'comedies,stand-up comedy', 'comedies', 'stand-up comedy,comedies', 'comedies,russian movies']}, {'name': 'languages', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['english', 'japanese', 'korean', 'spanish', 'hindi']}, {'name': 'series_or_movie', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['movie', 'series']}, {'name': 'hidden_gem_score', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['0.0-10.0']}, {'name': 'country_availability', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['japan', 'south korea', 'united kingdom', 'switzerland,germany', 'united states']}, {'name': 'runtime', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['1-2 hour', '< 30 minutes', '> 2 hrs', '30-60 mins']}, {'name': 'director', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'writer', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'actors', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'view_rating', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['r', 'pg-13', 'not rated', 'tv-ma', 'tv-14']}, {'name': 'imdb_score', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['1.0-10.0']}, {'name': 'rotten_tomatoes_score', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['0.0-100.0']}, {'name': 'metacritic_score', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['0.0-100.0']}, {'name': 'awards_received', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['0-any']}, {'name': 'awards_nominated_for', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['0-any']}, {'name': 'boxoffice', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['0-any']}, {'name': 'release_date', 'classification': 'Temporal', 'confidence_score': 'high', 'data_type': 'datetime', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'netflix_release_date', 'classification': 'Temporal', 'confidence_score': 'high', 'data_type': 'datetime', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'production_house', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['netflix', 'paramount pictures', 'universal pictures', 'columbia pictures corporation', 'working title films']}, {'name': 'netflix_link', 'classification': 'Identifier', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'imdb_link', 'classification': 'Identifier', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'summary', 'classification': 'Descriptive', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'imdb_votes', 'classification': 'Metric', 'confidence_score': 'high', 'data_type': 'float', 'type': 'Numerical', 'unit': '', 'expected_values': ['0-any']}, {'name': 'image', 'classification': 'Descriptive', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'poster', 'classification': 'Descriptive', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'tmdb_trailer', 'classification': 'Descriptive', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': []}, {'name': 'trailer_site', 'classification': 'Dimensional', 'confidence_score': 'high', 'data_type': 'string', 'type': 'Categorical', 'unit': '', 'expected_values': ['youtube', 'vimeo']}], 'common_column_cleaning_or_transformation': [{'name': 'release_year', 'description': 'Extracts the year component from the original content release date.', 'operation': {'type': 'date_op', 'source_column': 'release_date', 'function': 'YEAR'}}, {'name': 'netflix_release_year', 'description': 'Extracts the year component from the Netflix release date.', 'operation': {'type': 'date_op', 'source_column': 'netflix_release_date', 'function': 'YEAR'}}, {'name': 'runtime_avg_minutes', 'description': 'Maps categorical runtime values to an approximate numerical duration in minutes for quantitative analysis.', 'operation': {'type': 'map', 'source_column': 'runtime', 'mapping': {'< 30 minutes': 15, '30-60 mins': 45, '1-2 hour': 90, '> 2 hrs': 150}}}, {'name': 'imdb_score_category', 'description': "Bins numerical IMDb scores into predefined categorical ranges ('Low', 'Medium', 'High') for easier qualitative analysis.", 'operation': {'type': 'map_range', 'source_column': 'imdb_score', 'ranges': [{'range': '0.0-5.0', 'label': 'Low'}, {'range': '5.1-7.0', 'label': 'Medium'}, {'range': '7.1-10.0', 'label': 'High'}]}}, {'name': 'boxoffice_in_millions', 'description': 'Converts the raw box office revenue into a more readable format, expressed in millions of currency units.', 'operation': {'type': 'math_op', 'source_columns': ['boxoffice'], 'expression': 'boxoffice / 1000000'}}], 'common_column_combination': [{'name': 'average_critic_score', 'description': 'Calculates the average score from Rotten Tomatoes and Metacritic, both on a 100-point scale, indicating critical reception.', 'operation': {'source_columns': ['rotten_tomatoes_score', 'metacritic_score'], 'expression': '(rotten_tomatoes_score + metacritic_score) / 2'}}, {'name': 'total_awards_recognition', 'description': 'Sums the total number of awards received and awards nominated for, providing an overall measure of industry recognition.', 'operation': {'source_columns': ['awards_received', 'awards_nominated_for'], 'expression': 'awards_received + awards_nominated_for'}}, {'name': 'imdb_popularity_index', 'description': 'Estimates content popularity by multiplying the IMDb score by the number of IMDb votes, giving weight to both quality and audience engagement.', 'operation': {'source_columns': ['imdb_score', 'imdb_votes'], 'expression': 'imdb_score * imdb_votes'}}, {'name': 'boxoffice_per_vote', 'description': 'Calculates box office revenue per IMDb vote, serving as an indicator of financial success relative to audience interest.', 'operation': {'source_columns': ['boxoffice', 'imdb_votes'], 'expression': 'boxoffice / imdb_votes'}}, {'name': 'weighted_overall_score', 'description': 'Calculates a weighted average score from IMDb (scaled to 100), Rotten Tomatoes, and Metacritic for a comprehensive rating.', 'operation': {'source_columns': ['imdb_score', 'rotten_tomatoes_score', 'metacritic_score'], 'expression': '(imdb_score * 10 * 0.3 + rotten_tomatoes_score * 0.4 + metacritic_score * 0.3)'}}]}
+
+Instructions:
+
+Generate 10 high-relevance analysis tasks based on the Part 1 result. Whenever possible, try to optimize the tasks such that the output is a compact dataframe that is ready to be visualized.
+
+Tasks should only use:
+- Identifier, Dimensional, and Metric columns
+- Columns created in common_column_combination
+- Columns created in common_column_cleaning_or_transformation
+- Do not use PII or System/Metadata columns.
+
+Each task must include:
+- name: short descriptive title
+- task_id: unique integer (starting from 1)
+- description: clear description of the task goal
+- steps: ordered list of functions with parameters
+- score: (low, medium, high) for estimated relevance
+
+Supported Functions:
+
+- groupby -> {"function": "groupby", "columns_to_group_by": ["string"], "columns_to_aggregate": ["string"], "calculation": ["mean","median","min","max","count","size","sum]}
+
+- filter -> {"function": "filter", "column_name": "string", "operator": "string", "values": [any]}
+    Categorical: operator = "in", values = array of strings
+    Numerical: operator = [">", "<", ">=", "<=", "==", "!=", "between"], values = numbers
+
+- get_top_or_bottom_N_entries -> {"function": "get_top_or_bottom_N_entries", "sort_by_column_name": "string", "order": "top|bottom", "number_of_entries": "int", "return_columns": ["string"]}
+- get_proportion -> {"function": "get_proportion", "column_name": ["string"], "values": ["optional"]}
+- get_column_statistics -> {"function": "get_column_statistics", "column_name": ["string"], "calculation": ["mean","median","min","max","count"]}
+- resample_data	-> {"function": "resample_data", "date_column": "string", "frequency": ["day", "week", "month", "year", "quarter"], "columns_to_group_by": ["string"], "columns_to_aggregate": ["string"], "calculation": ["sum", "mean", "median", "min", "max", "first", "last"]}
+
+**Example common_task**
+
+{
+  "name": "Identify top 5 customers with highest wine spending (1970â€“1980 birth years)",
+  "task_id": 1,
+  "description": "Filter customers born between 1970 and 1980, then find top 5 by wine spending.",
+  "steps": [
+    {
+      "function": "filter",
+      "column_name": "Year_Birth",
+      "operator": "between",
+      "values": [1970, 1980]
+    },
+    {
+      "function": "get_top_or_bottom_N_entries",
+      "sort_by_column_name": "MntWines",
+      "order": "top",
+      "number_of_entries": 5,
+      "return_columns": ["Id", "MntWines"]
+    }
+  ],
+  "score": "high"
+}
+
+{
+  "name": "Calculate Monthly Total Revenue by City",
+  "task_id": 2,
+  "description": "Calculate the total revenue for each city for every month in the dataset's time range.",
+  "steps": [
+    {
+      "function": "resample_data",
+      "date_column": "Date",
+      "frequency": "month",
+      "columns_to_group_by": ["City"],
+      "columns_to_aggregate": ["Revenue"],
+      "calculation": "sum"
+    }
+  ],
+  "score": "high"
+}
+
+
+
+Final output JSON schema:
+
+{
+  "common_tasks": [
+    {
+      "name": "string",
+      "task_id": "int",
+      "description": "string",
+      "steps": [{}],
+      "score": "string"
+    }
+  ]
+}

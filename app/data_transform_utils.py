@@ -5,10 +5,83 @@ import json
 
 from app.logger import logger
 
+MAX_BAR_ROWS = 20
+MIN_LINE_POINTS = 5
+MAX_VISUAL_ROWS = 50
+MAX_VISUAL_COLS = 10 
+
+
+def determine_main_date_col(df):
+    date_col_names = ['date', 'timestamp', 'updated_at', 'created_at'] # placeholder
+    date_cols = []
+    df_length = len(df)
+    for col in df.columns:
+        if any(i in col for i in date_col_names):
+            date_cols.append(col)
+    if len(date_cols) == 1:
+        return date_cols[0]
+    else:
+        unique_vals = {}
+        for col in date_cols:
+            unique_vals[col] = df[col].nunique()
+        max_unique_val_col = max(unique_vals, key=unique_vals.get)
+        
+        return max_unique_val_col # assuming one col with max number of unique values
+
+
+def infer_granularity(series):
+    hr_granularity = series.sort_values().diff().mode()[0] / pd.Timedelta(hours=1)
+    
+    MINUTE_H = 1/60
+    
+    HOUR_H = 1
+    DAY_H = 24
+    WEEK_H = 24 * 7
+    
+    MONTH_H_LOWER = 28 * 24
+    MONTH_H_HIGHER = 31 * 24
+    YEAR_H_LOWER = 365 * 24
+    YEAR_H_HIGHER = 366 * 24
+    
+    if np.isclose(hr_granularity, MINUTE_H):
+        return "minute"
+    elif np.isclose(hr_granularity, 15 * MINUTE_H):
+        return "15 minutes"
+    elif np.isclose(hr_granularity, 30 * MINUTE_H):
+        return "30 minutes"
+    elif np.isclose(hr_granularity, HOUR_H):
+        return "hour"
+    elif np.isclose(hr_granularity, DAY_H):
+        return "day"
+    elif np.isclose(hr_granularity, WEEK_H):
+        return "week"
+    elif MONTH_H_LOWER <= hr_granularity <= MONTH_H_HIGHER:
+        return "month"
+    elif YEAR_H_LOWER <= hr_granularity <= YEAR_H_HIGHER:
+        return "year"
+    elif hr_granularity < MINUTE_H:
+        return "less than a minute"
+    elif hr_granularity > YEAR_H_HIGHER:
+        return "greater than a year"
+    else:
+        return f"{round(hr_granularity, 2)} hours"
+
+def handle_datetime_columns_serialization(df: pd.DataFrame):
+    df = df.copy()
+    datetime_columns = df.select_dtypes(include=['datetime64[ns]']).columns.tolist()
+
+    if datetime_columns:
+        for dt_col in datetime_columns:
+            df[dt_col] = df[dt_col].dt.strftime('%Y-%m-%d %H:%M:%S')
+    
+    return df
+
 @logger.catch
 def clean_dataset(df):
     df = df.copy()
     CONV_SUCCESS_RATE = 0.5
+    
+    granularity_map = {}
 
     # for column names, strip, make lowercase, replace space and dash with _, and remove non-alphanum characters
     df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_', regex=False).str.replace('-', '_') \
@@ -30,6 +103,9 @@ def clean_dataset(df):
                 
                 if datetime_success_rate > CONV_SUCCESS_RATE:
                     df[col] = temp_series_dt
+                    
+                    granularity_map[col] = infer_granularity(temp_series_dt) # adding this col granularity to the dict
+                    
                     continue
 
             # check if numeric
@@ -46,7 +122,7 @@ def clean_dataset(df):
         else:
             continue # column is already numeric type and doesnt require cleaning
         
-    return df
+    return df, granularity_map
 
 def validate_columns(cols_to_check: str | list, column_list):
     if not cols_to_check:
@@ -58,6 +134,8 @@ def validate_columns(cols_to_check: str | list, column_list):
     
     if len(missing_cols) > 0:
         raise Exception(f'some columns mentioned in task do not exist. columns ({", ".join(missing_cols)})')
+    
+    return
 
 def groupby_func(df: pd.DataFrame, columns_to_group_by: list, columns_to_aggregate: list, calculation: str):
     for cols_to_check in (columns_to_group_by, columns_to_aggregate):
@@ -70,14 +148,17 @@ def groupby_func(df: pd.DataFrame, columns_to_group_by: list, columns_to_aggrega
         if not is_numeric_dtype(df[col]):
             df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    if len(calculation) > 1:
+    if isinstance(calculation, list) and len(calculation) > 1:
         agg_dct = {col: calculation for col in columns_to_aggregate}
         df = df.groupby(columns_to_group_by, as_index=False).agg(agg_dct)
         df.columns = [f'{i[0]}_{i[1]}' for i in df.columns] # merging the two level of column names into one
         
-    elif len(calculation) == 1:
-        calc = calculation[0]
-        df = df.groupby(columns_to_group_by, as_index=False)[columns_to_aggregate].apply(calc)
+        return df
+        
+    if isinstance(calculation, list) and len(calculation) == 1:
+        calculation = calculation[0]
+        
+    df = df.groupby(columns_to_group_by, as_index=False)[columns_to_aggregate].apply(calculation)
         
     return df
 
@@ -165,6 +246,30 @@ def get_column_statistics_func(df: pd.DataFrame, column_name: str | list, calcul
     df = df.copy()
     column_name = column_name[0] if isinstance(column_name, list) else column_name
     return df[column_name].agg(calculation).reset_index()
+
+@logger.catch(reraise=True)
+def resample_data_func(df: pd.DataFrame, columns_to_group_by: list, columns_to_aggregate: list,  frequency: str, date_column: str, 
+                       calculation: str):
+    for cols_to_check in [columns_to_group_by, columns_to_aggregate, date_column]:
+        validate_columns(cols_to_check, df.columns.tolist())
+    
+    period_map = {'day': 'D', 'week': 'W', 'month': 'MS', 'year': 'YS', 'quarter': 'QS'}
+    frequency = period_map[frequency]
+    
+    df = df.copy()
+    
+    if isinstance(calculation, list):
+        calculation = calculation[0]
+        
+    if isinstance(date_column, list):
+        date_column = date_column[0]
+    
+    if len(columns_to_group_by) > 0:
+        resampled = df.groupby(columns_to_group_by).resample(frequency, on=date_column)[columns_to_aggregate].apply(calculation).reset_index()
+    else:
+        resampled = df.resample(frequency, on=date_column)[columns_to_aggregate].apply(calculation).reset_index()
+    return resampled
+    
 
 ####### column transform functions ########
    
@@ -353,3 +458,32 @@ def col_transform_and_combination_parse_helper(dct, is_col_combination):
         formula = expression
         
     return {'operation': op_type, 'description': description, 'formula': formula}
+
+def determine_result_output_type(df: pd.DataFrame):
+
+    if df.shape[0] > MAX_VISUAL_ROWS or df.shape[1] > MAX_VISUAL_COLS:
+        return 'TABLE_EXPORT'
+
+    if df.shape[1] < 2:
+        return 'DISPLAY_TABLE' 
+    
+    col_1_dtype = str(df.dtypes.iloc[0])
+    col_2_dtype = str(df.dtypes.iloc[1])
+
+    is_numeric_1 = ('int' in col_1_dtype or 'float' in col_1_dtype)
+    is_numeric_2 = ('int' in col_2_dtype or 'float' in col_2_dtype)
+    is_datetime_1 = ('datetime' in col_1_dtype)
+    is_datetime_2 = ('datetime' in col_2_dtype)
+    
+    is_categorical_1 = ('object' in col_1_dtype or 'category' in col_1_dtype)
+    is_categorical_2 = ('object' in col_2_dtype or 'category' in col_2_dtype)
+
+    if df.shape[0] >= MIN_LINE_POINTS:
+        if (is_datetime_1 and is_numeric_2) or (is_datetime_2 and is_numeric_1):
+            return 'LINE_CHART'
+
+    if df.shape[0] <= MAX_BAR_ROWS:
+        if (is_categorical_1 and is_numeric_2) or (is_categorical_2 and is_numeric_1):
+            return 'BAR_CHART'
+
+    return 'DISPLAY_TABLE'

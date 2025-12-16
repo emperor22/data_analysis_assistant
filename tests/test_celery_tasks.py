@@ -46,7 +46,7 @@ def test_get_prompt_result_task(monkeypatch, mocker, get_prompt_result_data):
 
 
 
-def test_data_processing_task(mocker, df_to_parquet_mock, data_processing_task_first_run_flow_data):
+def test_data_processing_task(mocker, data_processing_task_first_run_flow_data):
         
     user_id = data_processing_task_first_run_flow_data['user_id']
     request_id = data_processing_task_first_run_flow_data['request_id']
@@ -57,6 +57,7 @@ def test_data_processing_task(mocker, df_to_parquet_mock, data_processing_task_f
     
     mock_change_request_status_sync = mocker.patch('app.tasks.PromptTableOperation.change_request_status_sync')
     mock_add_task_result_sync = mocker.patch('app.services.TaskRunTableOperation.add_task_result_sync')
+    mock_save_dataset_req_id = mocker.patch('app.services.save_dataset_req_id')
     mock_update_final_dataset_snippet_sync = mocker.patch('app.services.TaskRunTableOperation.update_final_dataset_snippet_sync')
     mock_update_original_common_task_result_sync = mocker.patch('app.services.TaskRunTableOperation.update_original_common_task_result_sync')
     mock_update_column_transform_task_status_sync = mocker.patch('app.services.TaskRunTableOperation.update_column_transform_task_status_sync')
@@ -79,7 +80,7 @@ def test_data_processing_task(mocker, df_to_parquet_mock, data_processing_task_f
     mock_update_column_transform_task_status_sync.assert_called_once_with(request_id=request_id, column_transforms_status=mock.ANY)
     mock_update_column_combination_task_status_sync.assert_called_once_with(request_id=request_id, column_combinations_status=mock.ANY)
     mock_update_columns_info_sync.assert_called_once_with(request_id=request_id, columns_info=mock.ANY)
-    df_to_parquet_mock.assert_called_once() # to check if dataset with new cols is saved
+    mock_save_dataset_req_id.assert_called_once_with(save_path=mock.ANY, request_id=request_id, dataframe=mock.ANY, save_type='original_dataset')
     
 
     

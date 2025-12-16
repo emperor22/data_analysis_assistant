@@ -3,7 +3,7 @@ import json
 import time
 
 from app.services import get_prompt_result, process_llm_api_response, DataAnalysisProcessor, insert_prompt_context, cleanup_agg_col_names
-from app.crud import TaskRunTableOperation, PromptTableOperation, base_engine_sync
+from app.crud import TaskRunTableOperation, PromptTableOperation, BlacklistedDatasetsTableOperation, base_engine_sync
 
 from app.schemas import DataTasks, DatasetAnalysisModelPartOne, DatasetAnalysisModelPartTwo, TaskStatus, RunInfoSchema
 from app.logger import logger
@@ -38,18 +38,22 @@ class DatabaseTask(app.Task):
     def get_engine(self):
         return base_engine_sync 
 
+class BlacklistedDatasetException(Exception):
+    pass
 
 # if it persists, write 'not enough common tasks, probably invalid dataset' status to prompt_and_result and (maybe) blacklist the dataset
 
 retry_for_exceptions_get_prompt_task = [ValidationError, RequestException]
 
-@app.task(bind=True, base=DatabaseTask, name='tasks.get_prompt_result_task', acks_late=True, time_limit=200, max_retries=3, rate_limit='15/m', 
-          retry_backoff=True, retry_backoff_max=60, autoretry_for=retry_for_exceptions_get_prompt_task)
-def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, user_id, dataset_cols):
+@app.task(bind=True, base=DatabaseTask, name='tasks.get_prompt_result_task', acks_late=True, time_limit=200, max_retries=7, rate_limit='15/m', 
+          retry_backoff=True, retry_backoff_max=60, autoretry_for=retry_for_exceptions_get_prompt_task, validation_retries=0)
+def get_prompt_result_task(self, model, prompt_pt_1, task_count, dataset_id, request_id, user_id, dataset_cols):
     
     logger.info(f'initial task request processed: request_id {request_id}, user_id {user_id}')
     
+    
     start_time = time.perf_counter()
+    
     
     # TO DO:
     # catch requestlimit error and throttle for 60 seconds
@@ -60,6 +64,17 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
     with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.waiting_for_initial_request_prompt.value)
+        
+        blacklist_table_ops = BlacklistedDatasetsTableOperation(conn_sync=conn)
+        is_blacklisted = blacklist_table_ops.check_if_blacklisted(dataset_id)
+        
+        if is_blacklisted:
+            logger.warning(f'user uploaded blacklisted dataset: request_id {request_id}, user_id {user_id}')
+            prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.failed_because_blacklisted_dataset.value)
+            raise BlacklistedDatasetException
+
+        if is_blacklisted is None:
+            blacklist_table_ops.add_dataset_to_table(dataset_id)
     
     # getting result for prompt part 1
     if not (MOCK_PROMPT_RESULT and PT1_PROMPT_MOCK_FILE):
@@ -69,10 +84,19 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
         logger.info('part 2 prompt mocked')
         with open(PT1_PROMPT_MOCK_FILE, 'r') as f:      # mocking part 1 response
             resp_pt_1 = json.load(f)
+            
+    with open('prompt_pt1.txt', 'w', encoding='utf-8') as f:
+        f.write(prompt_pt_1)
+    with open('resp_jsons/prompt_pt1.json', 'w', encoding='utf-8') as f:
+        json.dump(resp_pt_1, f, indent=4)
     
     try:
         resp_pt_1 = DatasetAnalysisModelPartOne.model_validate(resp_pt_1, context={'required_cols': dataset_cols, 'request_id': request_id})
     except ValidationError:
+        with engine.connect() as conn:
+            blacklist_table_ops = BlacklistedDatasetsTableOperation(conn_sync=conn)
+            blacklist_table_ops.increment_failed_attempt(dataset_id)
+        
         logger.exception(f'failed 1st part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_1}')
         raise
     
@@ -90,10 +114,19 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
         logger.info('part 2 prompt mocked')
         with open(PT2_PROMPT_MOCK_FILE, 'r') as f:      # mocking part 2 response
             resp_pt_2 = json.load(f)
+            
+    with open('prompt_pt2.txt', 'w', encoding='utf-8') as f:
+        f.write(prompt_pt_2)
+    with open('resp_jsons/prompt_pt2.json', 'w', encoding='utf-8') as f:
+        json.dump(resp_pt_2, f, indent=4)
     
     try:
         resp_pt_2 = DatasetAnalysisModelPartTwo.model_validate(resp_pt_2, context={'run_type': 'first_run_after_request', 'request_id': request_id})
     except ValidationError:
+        with engine.connect() as conn:
+            blacklist_table_ops = BlacklistedDatasetsTableOperation(conn_sync=conn)
+            blacklist_table_ops.increment_failed_attempt(dataset_id)
+        
         logger.exception(f'failed 2nd part response validation: request_id {request_id}, user_id {user_id}, resp -> {resp_pt_2}')
         raise
     
@@ -109,10 +142,14 @@ def get_prompt_result_task(self, model, prompt_pt_1, task_count, request_id, use
         prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.initial_request_prompt_received.value)
 
     # write response, token_count to main table
-    data_tasks_fields = ['columns', 'common_tasks', 'common_column_cleaning_or_transformation', 'common_column_combination']
+    data_tasks_fields = DataTasks.model_fields.keys()
     data_tasks_dct = {k: v for k, v in result.items() if k in data_tasks_fields}
 
     data_tasks = DataTasks.model_validate(data_tasks_dct)
+    
+    with engine.connect() as conn:
+        blacklist_table_ops = BlacklistedDatasetsTableOperation(conn_sync=conn)
+        blacklist_table_ops.reset_failed_attempt_count(dataset_id)
     
     process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
@@ -140,9 +177,6 @@ def get_additional_analyses_prompt_result(self, model, new_tasks_prompt, request
         prompt_table_ops.change_request_status_sync(request_id=request_id, status=TaskStatus.waiting_for_additional_analysis_prompt_result.value)
     
         resp_pt_1 = prompt_table_ops.get_prompt_result_sync(request_id=request_id, user_id=user_id)
-        
-    if not resp_pt_1:
-        raise Exception('the requested prompt result does not exist')
     
     resp_pt_1 = json.loads(resp_pt_1['prompt_result'])
     
@@ -188,7 +222,8 @@ def get_additional_analyses_prompt_result(self, model, new_tasks_prompt, request
 
 @app.task(bind=True, base=DatabaseTask, name='tasks.data_processing_task', acks_late=True, ignore_result=True, time_limit=20, max_retries=3)
 def data_processing_task(self, data_tasks_dict, run_info: RunInfoSchema, 
-                         run_type: Literal['first_run_after_request', 'modified_tasks_execution', 'additional_analyses_request']):
+                         run_type: Literal['first_run_after_request', 'modified_tasks_execution', 'additional_analyses_request', 
+                                           'modified_tasks_execution_with_new_dataset']):
     request_id = run_info['request_id']
     user_id = run_info['user_id']
     
@@ -198,11 +233,13 @@ def data_processing_task(self, data_tasks_dict, run_info: RunInfoSchema,
     
     starting_status_dct = {'first_run_after_request': TaskStatus.doing_initial_tasks_run.value, 
                             'modified_tasks_execution': TaskStatus.doing_customized_tasks_run.value, 
-                            'additional_analyses_request': TaskStatus.doing_additional_tasks_run.value}
+                            'additional_analyses_request': TaskStatus.doing_additional_tasks_run.value, 
+                            'modified_tasks_execution_with_new_dataset': TaskStatus.doing_customized_tasks_run.value}
     
     finished_status_dct = {'first_run_after_request': TaskStatus.initial_tasks_run_finished.value, 
                             'modified_tasks_execution': TaskStatus.customized_tasks_run_finished.value, 
-                            'additional_analyses_request': TaskStatus.additional_tasks_run_finished.value}
+                            'additional_analyses_request': TaskStatus.additional_tasks_run_finished.value, 
+                            'modified_tasks_execution_with_new_dataset': TaskStatus.doing_customized_tasks_run.value}
     
     engine = self.get_engine()
     
@@ -216,13 +253,13 @@ def data_processing_task(self, data_tasks_dict, run_info: RunInfoSchema,
     with engine.connect() as conn:
         task_run_table_ops = TaskRunTableOperation(conn_sync=conn)
         
-        if run_type == 'first_run_after_request': # if the run is the first task run right after the llm resp request
+        if run_type == 'first_run_after_request':
             task_run_table_ops.add_task_result_sync(request_id=request_id, user_id=user_id, 
                                                     original_common_tasks=json.dumps({'original_common_tasks': common_tasks})
                                                     )
         
         processor = DataAnalysisProcessor(data_tasks=data_tasks, run_info=run_info, task_run_table_ops=task_run_table_ops, run_type=run_type)
-        processor.process_all_tasks() # to do: check if all tasks are processed first. if not, raise a specific exception that you need to retry for
+        processor.process_all_tasks()
         
     with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)

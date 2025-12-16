@@ -7,7 +7,7 @@ import jwt
 import asyncio
 from passlib.context import CryptContext
 
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+
 
 
 
@@ -18,15 +18,30 @@ from app.schemas import GetCurrentUserModel
 
 import secrets
 
+import os, hmac, hashlib, base64
+
 SECRET_KEY = '6023ea54cbd56eed9d88d6ae008c6a14'
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+SECRET_KEY_OTP_ENCRYPT = 'satuduatiga'
 
 def generate_random_otp():
-    return str(secrets.randbelow(1000000)).zfill(6)
+    secret_key = SECRET_KEY_OTP_ENCRYPT.encode()
+    raw_otp = str(secrets.randbelow(1000000)).zfill(6)
+    digest = hmac.new(secret_key, raw_otp.encode(), hashlib.sha256).digest()
+    encrypted_otp = base64.b64encode(digest).decode()
+    return raw_otp, encrypted_otp
+
+def verify_otp(raw_otp, encrypted_otp):
+    secret_key = SECRET_KEY_OTP_ENCRYPT.encode()
+    expected = hmac.new(secret_key, raw_otp.encode(), hashlib.sha256).digest()
+    stored = base64.b64decode(encrypted_otp)
+    return hmac.compare_digest(expected, stored)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
 def create_access_token(data: dict, expire_minutes=None):
@@ -57,60 +72,12 @@ def get_current_user(token=Depends(oauth2_scheme), conn=Depends(get_conn)):
     if user is None:
         raise credentials_exception
 
-    return GetCurrentUserModel(username=user['username'], user_id=user['id'])
+    return GetCurrentUserModel(username=user['username'], user_id=user['id'], email=user['email'])
 
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def get_hashed_password(password):
-    return pwd_context.hash(password)
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-async def send_email(subject: str, recipients: list, body: str):
-    message = MessageSchema(
-        subject=subject,
-        recipients=recipients,
-        body=body,
-        subtype=MessageType.plain
-    )
     
-    conf = ConnectionConfig(
-    MAIL_USERNAME='daaotpsender@gmail.com',
-    MAIL_PASSWORD='rfww zlil bhbl emjz',
-    MAIL_FROM='daaotpsender@gmail.com',
-    MAIL_PORT=587,
-    MAIL_SERVER='smtp.gmail.com',
-    MAIL_STARTTLS=True,
-    MAIL_SSL_TLS=False,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True,
-    )
-    
-    fm = FastMail(conf)
-    
-    await fm.send_message(message)
-    
-# import os, hmac, hashlib, base64
-# from secrets import token_hex
 
-# SECRET_KEY = os.environ.get("OTP_SECRET_KEY", "change_this_to_secure_random_key").encode()
-
-# def generate_encrypted_otp():
-#     """Generate OTP and return (raw_otp, encrypted_otp)."""
-#     raw_otp = token_hex(3)  # 6 hex digits (~3 bytes entropy)
-#     digest = hmac.new(SECRET_KEY, raw_otp.encode(), hashlib.sha256).digest()
-#     encrypted_otp = base64.b64encode(digest).decode()
-#     return raw_otp, encrypted_otp
-
-# def verify_otp(raw_otp: str, encrypted_otp: str) -> bool:
-#     """Compare provided OTP to stored encrypted OTP."""
-#     expected = hmac.new(SECRET_KEY, raw_otp.encode(), hashlib.sha256).digest()
-#     stored = base64.b64decode(encrypted_otp)
-#     return hmac.compare_digest(expected, stored)
     
     
 

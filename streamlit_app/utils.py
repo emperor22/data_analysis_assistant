@@ -5,7 +5,15 @@ import time
 import pandas as pd
 import json
 from copy import deepcopy
-from string import Template, Formatter
+from string import Template
+import re
+
+import base64
+from PIL import Image
+from io import BytesIO
+
+from typing import Literal
+from copy import deepcopy
 
 # import nltk
 # nltk.download('punkt')
@@ -13,6 +21,49 @@ from string import Template, Formatter
 
 # URL = 'https://nginx/api'
 URL = 'http://localhost:8000'
+
+DEFAULT_SEND_EMAIL = True
+
+DEFAULT_VERSION_CUSTOMIZED_TASKS = 1
+
+# item_list = ['selected_tasks_to_modify', 'imported', 'tasks', 'tasks_plots', 'modified_tasks']
+
+# def local_storage_manager():
+#     return LocalStorage()
+
+
+
+# def set_item_ls(item, key, key_st, local_storage):
+#     local_storage.setItem(key, item, key_st)
+    
+# def get_item_ls(key, local_storage):
+#     return deepcopy(local_storage.getItem(key))
+
+# def delete_item_ls(key, key_st, local_storage):
+#     local_storage.deleteItem(key, key_st)
+
+# def item_exists_ls(key, local_storage):
+#     return local_storage.getItem(key) is not None
+    
+# def delete_request_id_elem_in_item_ls(request_id, item_to_modify: Literal[tuple(item_list)], key_st, local_storage): # type: ignore
+#     dct = deepcopy(local_storage.getItem(item_to_modify))
+#     del dct[request_id]
+#     local_storage.setItem(item_to_modify, dct, key_st)
+    
+# def get_request_id_elem_in_item_ls(request_id, item: Literal[tuple(item_list)], local_storage): # type: ignore
+#     dct = deepcopy(local_storage.getItem(item))
+#     return dct[request_id]
+    
+# def request_id_exists_in_item_ls(request_id, item_to_check: Literal[tuple(item_list)], local_storage): # type: ignore
+#     dct = local_storage.getItem(item_to_check)
+    
+#     return request_id in dct
+
+# def set_request_id_elem_in_item_ls(request_id, elem_set,
+#                                   item_to_modify: Literal[tuple(item_list)], key_st, local_storage): # type: ignore
+#     dct = deepcopy(local_storage.getItem(item_to_modify))
+#     dct[request_id] = elem_set
+#     local_storage.setItem(item_to_modify, dct, key_st)
 
 def register_user(username, first_name, last_name, email):
     body = {'username': username, 'first_name': first_name, 'last_name': last_name, 'email': email}
@@ -115,6 +166,7 @@ def include_auth_header(func):
             raise Exception(f'request returned an error: status code: {res.status_code}')
                 
         except Exception as e:
+            raise e
             st.error(f'An error occurred during the request: {e}')
         
     return wrapper
@@ -125,6 +177,40 @@ def get_original_tasks_by_id(task_id, headers=None):
     url = f'{URL}/get_original_tasks_by_id/{task_id}'
     
     res = requests.get(url, verify=False,  headers=headers)
+    
+    return res
+
+@include_auth_header
+def manage_customized_tasks(request_id, operation: Literal['fetch', 'delete', 'update', 'check_if_empty'], slot=None, tasks=None, headers=None):
+    url = f'{URL}/manage_user_cust_tasks'
+    
+    data = {'request_id': request_id, 'operation': operation}
+    
+    if tasks is not None:
+        data['tasks'] = {'customized_tasks': tasks}
+        
+    if slot is not None:
+        data['slot'] = slot
+    
+    res = requests.post(url, json=data, headers=headers)
+    
+    return res
+
+@include_auth_header
+def set_imported_task_ids(request_id, task_ids, headers=None):
+    url = f'{URL}/set_imported_task_ids'
+    
+    data = {'request_id': request_id, 'task_ids': task_ids}
+    
+    res = requests.post(url, json=data, headers=headers)
+    
+    return res
+
+@include_auth_header
+def fetch_imported_task_ids(request_id, headers=None):
+    url = f'{URL}/fetch_imported_task_ids/{request_id}'
+    
+    res = requests.get(url, headers=headers)
     
     return res
 
@@ -197,21 +283,38 @@ def get_dataset_snippet_by_id(task_id, headers=None):
 
 
 @include_auth_header
-def send_tasks_to_process(data_tasks, task_id, headers=None):
+def send_tasks_to_process(data_tasks, task_id, send_result_to_email=DEFAULT_SEND_EMAIL, headers=None):
     url = f'{URL}/execute_analyses'
     
     data_tasks['request_id'] = task_id
+    data_tasks['send_result_to_email'] = send_result_to_email
     
     res = requests.post(url, verify=False,  data=json.dumps(data_tasks), headers=headers)
     
     return res
 
 @include_auth_header
-def make_analysis_request(uploaded_file, model, task_count, headers=None):
+def send_tasks_to_process_w_new_dataset(uploaded_file, data_tasks, task_id, send_result_to_email=DEFAULT_SEND_EMAIL, headers=None):
+    url = f'{URL}/execute_analyses_with_new_dataset'
+    
+    data_tasks['request_id'] = task_id
+    data_tasks['send_result_to_email'] = send_result_to_email
+    
+    data = {'execute_analyses_data': json.dumps(data_tasks)}
+    
+    file = {'file': (uploaded_file.name, uploaded_file.getvalue())}
+
+    res = requests.post(url, verify=False, files=file, data=data, headers=headers)
+    
+    
+    return res
+
+@include_auth_header
+def make_analysis_request(uploaded_file, model, task_count, send_result_to_email=DEFAULT_SEND_EMAIL, headers=None):
     url = f'{URL}/upload_dataset'
     file = {'file': (uploaded_file.name, uploaded_file.getvalue())}
 
-    data = {'model': model, 'analysis_task_count': str(task_count)}
+    data = {'model': model, 'analysis_task_count': str(task_count), 'send_result_to_email': send_result_to_email}
 
     res = requests.post(url, verify=False, files=file, headers=headers, data=data)
     
@@ -234,7 +337,27 @@ def is_numerical(s):
     except ValueError:
         return False
 
-def render_modified_task_box(task_id, param_info, all_columns, step_idx, step, step_param, task_idx):
+def split_and_validate_new_prompt(new_analysis_text):
+    
+    def validate_value(s):
+        min_char = 15
+        max_char = 100
+        return min_char <= len(s) <= max_char 
+    
+    regex = r'^[a-zA-Z0-9 \n\r]*$'
+    
+    if not bool(re.fullmatch(regex, new_analysis_text)):
+        return
+            
+    values = [i.strip() for i in new_analysis_text.split('\n')]
+    all_values_valid = all([validate_value(val) for val in values])
+    
+    if len(values) > 5 or not all_values_valid:
+        return
+    
+    return new_analysis_text
+
+def render_modified_task_box(request_id, param_info, all_columns, step_idx, step, step_param, task_idx):
     '''
     Arguments:
     param_info -> from PARAMS_MAP, obtained from function_name. to get alias, widget type, and options for widget
@@ -272,7 +395,7 @@ def render_modified_task_box(task_id, param_info, all_columns, step_idx, step, s
             value = value if step['operator'] in num_ops and is_numerical(filter_value) else 'in'
             
             # this line forces replacing the operator with 'in' in case the operator is == with single string value
-            st.session_state.modified_tasks[task_id][task_idx]['steps'][step_idx][step_param] = value
+            st.session_state.modified_tasks[request_id][task_idx]['steps'][step_idx][step_param] = value
             
         index = options.index(value)
         
@@ -326,8 +449,9 @@ def render_modified_task_box(task_id, param_info, all_columns, step_idx, step, s
         return [val.strip() for val in new_value.split(';')]
             
     
-def render_original_task_expander(task, task_idx) :   
+def render_original_task_expander(task, task_idx, plots_dct) :   
     task_status = task['status']
+    
     status_in_label = f' ({task_status.split()[0].upper()})' if task_status.startswith('failed') else ''
     expander_label = f"{task_idx+1} - {task['name']}{status_in_label}"
     
@@ -344,9 +468,16 @@ def render_original_task_expander(task, task_idx) :
         
         st.write('---')
         
-        if task_status == 'successful':
+        if 'failed' not in task_status:
             st.write('**Result**')
             st.write(pd.DataFrame(task['result']))
+
+            task_id = str(task['task_id'])
+            if task_id in plots_dct:
+                st.write('**Chart**')
+                display_b64_encoded_image(plots_dct[task_id])
+        
+    
 
 def process_step_val(val):
     if val is None:
@@ -358,9 +489,9 @@ def process_step_val(val):
             val = f'({val})'
             return val
         else:
-            val = val[0]
+            val = val[0] if len(val) > 0 else ''
     
-    return f'**{val}**'
+    return f'**{val}**' if val else '[]'
 
 def get_template_keys_to_be_substituted(s):
     return [i[1] for i in Template(s).pattern.findall(s)  if i[1] is not None]
@@ -432,6 +563,15 @@ PARAMS_MAP = {
         'column_name': {'alias': 'Column to get statistics from', 'type': 'selectbox'},
         'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['mean', 'median', 'min', 'max', 'count', 'sum']}
     },
+    
+    'resample_data': {
+        'template': 'Change data frequency to frequency $frequency, group by $columns_to_group_by, and calculate $calculation of column(s) $columns_to_aggregate', 
+        'date_column': {'alias': 'Date column', 'type': 'selectbox' }, 
+        'frequency': {'alias': 'Resample frequency', 'type': 'selectbox', 'options': ["day", "week", "month", "year", "quarter"]}, 
+        'columns_to_group_by': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
+        'columns_to_aggregate': {'alias': 'Column(s) to aggregate', 'type': 'multiselect'}, 
+        'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['sum', 'mean', 'median', 'min', 'max', 'first', 'last']}
+    }
 }
 
 DEFAULT_PARAMS = {
@@ -439,5 +579,23 @@ DEFAULT_PARAMS = {
     'filter': ['column_name', 'operator', 'values'],
     'get_top_or_bottom_N_entries': ['number_of_entries', 'sort_by_column_name', 'order'],
     'get_proportion': ['column_name', 'values'],
-    'get_column_statistics': ['column_name'],
+    'get_column_statistics': ['column_name'], 
+    'resample_data': ['frequency', 'columns_to_group_by', 'columns_to_aggregate']
 }
+
+
+
+def display_b64_encoded_image(img_string):
+    image_bytes = base64.b64decode(img_string)
+
+    image = Image.open(BytesIO(image_bytes))
+
+    st.image(image)
+    
+    
+##########################################################################
+
+
+
+
+

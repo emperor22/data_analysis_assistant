@@ -1,28 +1,10 @@
 import streamlit as st
 import pandas as pd
-from utils import make_analysis_request, make_additional_analyses_request, render_task_ids
+from utils import make_analysis_request, make_additional_analyses_request, render_task_ids, split_and_validate_new_prompt
 import time
 import re
 
-def split_and_validate_new_prompt(new_analysis_text):
-    
-    def validate_value(s):
-        min_char = 15
-        max_char = 100
-        return min_char <= len(s) <= max_char 
-    
-    regex = r'^[a-zA-Z0-9 \n\r]*$'
-    
-    if not bool(re.fullmatch(regex, new_analysis_text)):
-        return
-            
-    values = [i.strip() for i in new_analysis_text.split('\n')]
-    all_values_valid = all([validate_value(val) for val in values])
-    
-    if len(values) > 5 or not all_values_valid:
-        return
-    
-    return new_analysis_text
+
         
 
 
@@ -35,6 +17,7 @@ with first_req_tab:
     with analysis_req_form:
         file = st.file_uploader('Select your dataset file', accept_multiple_files=False, type=['csv'])
         model = st.selectbox('Select model', ['gemini-2.5-flash', 'gemma-3-27b-it', 'gemini-2.5-flash-lite'])
+        
         task_count = st.selectbox('Select number of analyses to output', [10, 20])
         
         if st.form_submit_button('Create Analysis Request'):

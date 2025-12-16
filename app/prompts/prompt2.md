@@ -131,6 +131,7 @@ Functions and Syntax for common_tasks:
 
 - `get_columns_statistics`: `{"function": "get_column_statistics", "column_name": ["string"], "calculation": ["mean", "median", "min", "max", "count"]}`
 
+- `downsample_data`: `{"function": "downsample_date", "frequency": ["day", "week", "month", "year"], "calculation": ["sum", "mean", "first", "last"]}`
 
 - For categorical `filter`, use `operator: 'in'` and an array of strings.
 

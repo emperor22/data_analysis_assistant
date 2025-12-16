@@ -2,14 +2,21 @@ You are a specialized AI assistant for data analysis and knowledge base curation
 
 === beginning of dataset context ===
 
-Dataset Name:  
-$dataset_name  
+Dataset name: 
+$dataset_name 
 
-Dataset Snippet:  
-$dataset_snippet  
+Dataset row count:
+$dataset_row_count
 
-Dataset Columns with Sample Unique Values:  
-$dataset_column_unique_values  
+Dataset snippet: 
+$dataset_snippet
+
+Dataset columns with sample unique values and unique value count and ratio: 
+$dataset_column_unique_values 
+
+Inferred Temporal Granularity Map (Format: JSON object {col_name: 'granularity', ...} or 'N/A'): 
+$temporal_granularity_map 
+
 
 === end of dataset context ===
 
@@ -104,7 +111,8 @@ MAP_RANGE → bin numeric values into labeled ranges.
 }
 
 
-DATE_OP → extract YEAR, MONTH, DAY, or WEEKDAY from Temporal columns.
+DATE_OP → extract YEAR, MONTH, DAY, or WEEKDAY from Temporal columns. 
+Note: Use the inferred granularity to guide the relevance of the DATE_OP.
 
 {
   "type": "date_op",
@@ -137,6 +145,8 @@ Final output JSON schema:
 {
   "domain": "string",
   "description": "string",
+  "is_time_series": "boolean",
+  "inferred_granularity": "string",
   "columns": [
     {
       "name": "string",

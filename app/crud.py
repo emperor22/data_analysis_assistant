@@ -8,7 +8,7 @@ from fastapi import Depends
 
 import uuid
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 
 from sqlalchemy import (
     ForeignKey,
@@ -25,57 +25,59 @@ from sqlalchemy.orm import declarative_base
 DATABASE_URL_ASYNC = 'sqlite+aiosqlite:///./test.sqlite'
 DATABASE_URL_SYNC = 'sqlite:///./test.sqlite'
 
+FAILED_ATTEMPT_THRESHOLD_FOR_BLACKLIST = 5
+
 base_engine = create_async_engine(DATABASE_URL_ASYNC)
 base_engine_sync = create_engine(DATABASE_URL_SYNC)
 
 
-def create_tables_sqlite():
-    con = sqlite3.connect('test.sqlite')
-    cur = con.cursor()
+# def create_tables_sqlite():
+#     con = sqlite3.connect('test.sqlite')
+#     cur = con.cursor()
 
-    cur.execute('''create table user (
-        id integer primary key,
-        username text not null unique, 
-        first_name text not null, 
-        last_name text not null,
-        email text not null unique,
-        created_at datetime default CURRENT_TIMESTAMP
-        )
+#     cur.execute('''create table user (
+#         id integer primary key,
+#         username text not null unique, 
+#         first_name text not null, 
+#         last_name text not null,
+#         email text not null unique,
+#         created_at datetime default CURRENT_TIMESTAMP
+#         )
         
-        ''')
+#         ''')
 
-    cur.execute('''create table prompt_and_result (
-        id integer primary key,
-        user_id integer references user(id),
-        prompt_version text, 
-        filename text,
-        dataset_cols text,
-        model text,  
-        prompt_result text, 
-        additional_analyses_prompt_result, 
-        status text,
-        celery_task_id text,
-        created_at datetime default CURRENT_TIMESTAMP
-        )
+#     cur.execute('''create table prompt_and_result (
+#         id integer primary key,
+#         user_id integer references user(id),
+#         prompt_version text, 
+#         filename text,
+#         dataset_cols text,
+#         model text,  
+#         prompt_result text, 
+#         additional_analyses_prompt_result, 
+#         status text,
+#         celery_task_id text,
+#         created_at datetime default CURRENT_TIMESTAMP
+#         )
         
-        ''')
+#         ''')
     
-    cur.execute('''create table task_run (
-        request_id integer references prompt_and_result(id), 
-        user_id integer references user(id), 
-        original_common_tasks text,
-        common_tasks_w_result text, 
-        column_transforms_status text,
-        column_combinations_status text, 
-        columns_info text, 
-        celery_task_id text, 
-        final_dataset_snippet text,
-        created_at datetime default CURRENT_TIMESTAMP
-    )
+#     cur.execute('''create table task_run (
+#         request_id integer references prompt_and_result(id), 
+#         user_id integer references user(id), 
+#         original_common_tasks text,
+#         common_tasks_w_result text, 
+#         column_transforms_status text,
+#         column_combinations_status text, 
+#         columns_info text, 
+#         celery_task_id text, 
+#         final_dataset_snippet text,
+#         created_at datetime default CURRENT_TIMESTAMP
+#     )
         
-        ''')
-    con.commit()
-    con.close()
+#         ''')
+#     con.commit()
+#     con.close()
     
 
 
@@ -113,7 +115,8 @@ class PromptAndResult(Base):
     status = Column(String)
     celery_task_id = Column(String)
     created_at = Column(DateTime)
-
+    last_accessed_at = Column(String)
+    
 class TaskRun(Base):
     __tablename__ = 'task_run'
 
@@ -129,10 +132,144 @@ class TaskRun(Base):
     final_dataset_snippet = Column(Text)
     created_at = Column(DateTime)
     
+class BlacklistedDatasets(Base):
+    __tablename__ = 'blacklisted_datasets'
+    
+    dataset_id = Column(Text, primary_key=True)
+    reason = Column(Text)
+    failed_attempts = Column(Integer)
+    last_failed_at = Column(DateTime)
+    is_blacklisted = Column(Integer)
+    
+class UserCustomizedTasks(Base):
+    __tablename__ = 'user_customized_tasks'
+    
+    request_id = Column(Text, ForeignKey("prompt_and_result.id"), primary_key=True)
+    user_id = Column(Text, ForeignKey("user.id"), primary_key=True)
+    
+    saved_tasks_slot_1 = Column(Text)
+    saved_tasks_slot_2 = Column(Text)
+    saved_tasks_slot_3 = Column(Text)
+    
+    imported_original_tasks = Column(Text)
+        
+    
 def create_tables():
     Base.metadata.create_all(base_engine_sync)
 
 
+class BlacklistedDatasetsTableOperation:
+    def __init__(self, conn_sync):
+        self.conn_sync = conn_sync
+
+    def add_dataset_to_table(self, dataset_id):
+        user_id = str(uuid.uuid4())
+
+        query = '''insert into blacklisted_datasets(dataset_id, reason, failed_attempts, last_failed_at, is_blacklisted) 
+                    values (:dataset_id, :reason, :failed_attempts, :last_failed_at, :is_blacklisted)'''
+        self.conn_sync.execute(text(query), {'dataset_id': dataset_id, 'reason': '', 'failed_attempts': 0, 'is_blacklisted': 0, 
+                                             'last_failed_at': get_current_time_utc()})
+        self.conn_sync.commit()
+    
+    def remove_dataset_from_table(self, dataset_id):
+        query = '''delete from blacklisted_datasets where dataset_id = :dataset_id'''
+        self.conn_sync.execute(text(query), {'dataset_id': dataset_id})
+        self.conn_sync.commit()
+    
+    def increment_failed_attempt(self, dataset_id):
+        cur_failed_attempt = self.get_failed_attempt_count(dataset_id)
+        
+        if cur_failed_attempt == FAILED_ATTEMPT_THRESHOLD_FOR_BLACKLIST:
+            self.mark_as_blacklisted(dataset_id)
+        
+        query = '''update blacklisted_datasets
+                   set failed_attempts = :new_failed_attempts
+                   where dataset_id = :dataset_id'''
+        self.conn_sync.execute(text(query), {'dataset_id': dataset_id, 'new_failed_attempts': cur_failed_attempt + 1})
+        self.conn_sync.commit()
+        
+    def reset_failed_attempt_count(self, dataset_id):
+        query = '''update blacklisted_datasets
+                   set failed_attempts = 0
+                   where dataset_id = :dataset_id'''
+        self.conn_sync.execute(text(query), {'dataset_id': dataset_id})
+        self.conn_sync.commit()
+    
+    def get_failed_attempt_count(self, dataset_id):
+        query = '''select failed_attempts from blacklisted_datasets where dataset_id = :dataset_id'''
+
+        res = self.conn_sync.execute(text(query), {'dataset_id': dataset_id})
+        res = res.fetchone()
+        return res._mapping['failed_attempts'] if res else None
+    
+    def check_if_blacklisted(self, dataset_id):
+        query = '''select is_blacklisted from blacklisted_datasets where dataset_id = :dataset_id'''
+
+        res = self.conn_sync.execute(text(query), {'dataset_id': dataset_id})
+        res = res.fetchone()
+        
+        if not res:
+            return None
+        
+        return bool(res._mapping['is_blacklisted'])
+    
+    def mark_as_blacklisted(self, dataset_id):
+        query = '''update blacklisted_datasets
+                   set is_blacklisted = 1
+                   where dataset_id = :dataset_id'''
+        self.conn_sync.execute(text(query), {'dataset_id': dataset_id})
+        self.conn_sync.commit()
+
+class UserCustomizedTasksTableOperation:
+    def __init__(self, conn):
+        self.conn = conn
+        
+    async def fetch_customized_tasks(self, user_id, request_id, slot):
+        col = f'saved_tasks_slot_{slot}'
+        query = f'''select {col} from user_customized_tasks where user_id = :user_id and request_id = :request_id'''
+
+        res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        return res._mapping[col] if res else None
+    
+    async def fetch_imported_tasks(self, user_id, request_id):
+        query = f'''select imported_original_tasks from user_customized_tasks where user_id = :user_id and request_id = :request_id'''
+        
+        res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        return res._mapping['imported_original_tasks'] if res else None
+    
+    async def check_if_customized_tasks_empty(self, user_id, request_id):
+        query = f'''select saved_tasks_slot_1, saved_tasks_slot_2, saved_tasks_slot_3 from user_customized_tasks where user_id = :user_id and request_id = :request_id'''
+        
+        res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        values = res._mapping.values()
+        return all([i is None for i in values])
+        
+    async def update_customized_tasks(self, user_id, request_id, slot, tasks):
+        col = f'saved_tasks_slot_{slot}'
+        query = f'''update user_customized_tasks set {col} = :tasks where user_id = :user_id and request_id = :request_id'''
+
+        await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id, 'tasks': tasks})
+        await self.conn.commit()
+        
+    async def delete_customized_tasks(self, user_id, request_id, slot):
+        self.update_customized_tasks(user_id=user_id, request_id=request_id, slot=slot, tasks=None)
+        
+    async def set_imported_tasks(self, user_id, request_id, imported_task_ids: list):
+        imported_task_ids = str(imported_task_ids)
+        query = '''update user_customized_tasks set imported_original_tasks = :imported_task_ids where user_id = :user_id and request_id = :request_id'''
+        
+        await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id, 'imported_task_ids': imported_task_ids})
+        await self.conn.commit()
+        
+    async def add_request_id_to_table(self, user_id, request_id):
+        query = f'''insert into user_customized_tasks(user_id, request_id) 
+                    values (:user_id, :request_id)'''
+        await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        await self.conn.commit()
+        
 class UserTableOperation:
     def __init__(self, conn):
         self.conn = conn
@@ -170,13 +307,6 @@ class PromptTableOperation:
     def __init__(self, conn=None, conn_sync=None):
         self.conn = conn
         self.conn_sync = conn_sync
-        
-    async def _get_table_obj(self):
-        metadata_obj = MetaData()
-        table_name = 'prompt_and_result'
-        prompt_table = await self.conn.run_sync(lambda sync_conn: Table(table_name, metadata_obj, autoload_with=sync_conn))
-        return prompt_table
-
     
     async def add_task(self, user_id: int, prompt_version: str, filename: str, dataset_cols: str, model: str):
 
@@ -255,18 +385,42 @@ class PromptTableOperation:
         res = res.fetchone()
         return res._mapping if res and res.status is not None else None
     
-    async def get_dataset_snippet_by_id(self, request_id: str, user_id: int):
-        query = '''select dataset_cols from prompt_and_result where user_id = :user_id and id = :request_id'''
+    async def get_dataset_filename(self, request_id: str, user_id: int):
+        query = '''select filename from prompt_and_result where user_id = :user_id and id = :request_id'''
 
         res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
         res = res.fetchone()
-        return res._mapping if res and res.dataset_cols is not None else None
+        return res._mapping['filename'] if res else None
     
     async def get_request_ids_by_user(self, user_id: int):
         query = '''select id, filename, status from prompt_and_result where user_id = :user_id'''
         res = await self.conn.execute(text(query), {'user_id': user_id})
         res = res.fetchall()
         return [(i.id, i.filename, i.status) for i in res] if res else None
+    
+    async def get_dataset_columns_by_id(self, request_id: str, user_id: int):
+        query = '''select dataset_cols from prompt_and_result where user_id = :user_id and id = :request_id'''
+
+        res = await self.conn.execute(text(query), {'request_id': request_id, 'user_id': user_id})
+        res = res.fetchone()
+        return res._mapping['dataset_cols'] if res and res.dataset_cols is not None else None
+    
+    def update_last_accessed_column(self, update_dct):
+        
+        for req_id, date in update_dct:
+            q = '''update prompt_and_result set last_accessed_at = :date where request_id = :req_id'''
+            self.conn_sync.execute(text(q), {'date': date, 'req_id': req_id})
+            
+        self.conn_sync.commit()
+        
+    def get_least_accessed_request_ids(self, thres_days):
+        date_filt = (date.today() - timedelta(days=thres_days)).srtftime('%Y-%m-%d')
+        
+        query = '''select request_id from prompt_and_result where last_accessed_at < :date_filt'''
+        
+        res = self.conn_sync.execute(text(query), {'date_filt': date_filt})
+        
+        return res._mapping['request_id'] if res else None
         
         
 class TaskRunTableOperation:
@@ -357,6 +511,24 @@ class TaskRunTableOperation:
         res = res.fetchone()
         return res._mapping if res and res.original_common_tasks is not None else None
     
+        
+    async def get_columns_combinations_by_id(self, user_id:int, request_id: str):
+        query = '''select column_combinations_status from task_run 
+                   where user_id = :user_id and request_id = :request_id'''
+    
+        res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        return res._mapping if res else None
+    
+    
+    async def get_columns_transformations_by_id(self, user_id:int, request_id: str):
+        query = '''select column_transforms_status from task_run 
+                   where user_id = :user_id and request_id = :request_id'''
+    
+        res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        return res._mapping if res else None
+    
     async def get_modified_tasks_by_id(self, user_id:int, request_id: str):
         query = '''select common_tasks_w_result from task_run 
                    where user_id = :user_id and request_id = :request_id'''
@@ -402,6 +574,9 @@ async def get_task_run_table_ops(conn=Depends(get_conn)):
     
 async def get_user_table_ops(conn=Depends(get_conn)):
     yield UserTableOperation(conn=conn)
+    
+async def get_user_customized_tasks_table_ops(conn=Depends(get_conn)):
+    yield UserCustomizedTasksTableOperation(conn=conn)
         
 
 async def read_sql_async(query, conn, insert_or_delete=False):
@@ -429,9 +604,9 @@ if __name__ == '__main__':
     async def func():
         async with base_engine.connect() as conn:
             # ops = UserTableOperation(conn)
-            # await ops.create_user(username='emperor22', email='xx@xx.com', first_name='andi', last_name='putra', hashed_password='satuduatiga')
-            await read_sql_async('delete from user', conn, True)
+            # await read_sql_async('delete from user', conn, True)
             await read_sql_async('delete from prompt_and_result', conn, True)
+            await read_sql_async('delete from user_customized_tasks', conn, True)
             await read_sql_async('delete from task_run', conn, True)
     asyncio.run(func())
     # create_tables()

@@ -1,0 +1,191 @@
+This is a great directory structure. It clarifies exactly where your data lives (`app/datasets`) and how your modules are nested.
+
+Based on this tree and the Ampere A1 requirement, here is the **revised, production-ready `docker-compose.yml`**.
+
+### Key Changes for this Structure:
+
+1.  **Unified Data Persistence (`app_data`):**
+      * Your tree shows a lot of data in `app/datasets` (Parquet files, artifacts).
+      * We must map a volume to **`/usr/src/app/app/datasets`**. If we don't, all those uploads and generated reports will vanish when the container restarts.
+      * **Crucial:** The Celery workers and the FastAPI app **must share this volume** so the worker can process files uploaded by the API.
+2.  **SQLite Database:**
+      * I see `test.sqlite` in your root. In Docker, this will be at `/usr/src/app/test.sqlite`.
+      * To save this DB, we need to map a volume to it, or (better practice) move the DB into a `data/` folder.
+      * *For this config, I have added a volume mapping for the DB file specifically to prevent data loss.*
+3.  **Build Context:**
+      * We use `context: .` for all Python services so they can copy `app/`, `streamlit_app/`, and root files like `.env` correctly.
+
+-----
+
+### The `docker-compose.yml`
+
+```yaml
+services:
+  # ----------------------------
+  # 1. Nginx (Reverse Proxy)
+  # ----------------------------
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - fastapi_app
+      - streamlit_frontend
+    networks:
+      - app-network
+    restart: always
+
+  # ----------------------------
+  # 2. Redis (Message Broker)
+  # ----------------------------
+  redis:
+    image: redis:7-alpine
+    command: redis-server
+    # Map Redis data to a named volume so the queue persists through restarts
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: always
+
+  # ----------------------------
+  # 3. FastAPI Backend
+  # ----------------------------
+  fastapi_app:
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile
+    # Assumes Dockerfile WORKDIR is /usr/src/app and does 'COPY . .'
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+    expose:
+      - 8000
+    env_file:
+      - .env
+    volumes:
+      # PERSISTENCE 1: Map host folder to the container's dataset folder
+      - ./app_data/datasets:/usr/src/app/app/datasets
+      # PERSISTENCE 2: Persist the SQLite database (if used)
+      # This assumes your config.py looks for 'test.sqlite' in the root
+      - ./app_data/db/test.sqlite:/usr/src/app/test.sqlite
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+
+  # ----------------------------
+  # 4. Streamlit Frontend
+  # ----------------------------
+  streamlit_frontend:
+    build:
+      context: .
+      dockerfile: ./streamlit_app/Dockerfile
+    # Running from root context
+    command: streamlit run streamlit_app/home.py --server.port 8501 --server.enableCORS true
+    expose:
+      - 8501
+    env_file:
+      - .env
+    networks:
+      - app-network
+    restart: always
+
+  # ----------------------------
+  # 5. Celery Worker (Data Processing)
+  # ----------------------------
+  data_processing_queue:
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile
+    command: celery -A app.tasks worker --loglevel=info -P solo -Q data_processing_queue
+    env_file:
+      - .env
+    volumes:
+      # WORKER MUST SEE THE SAME FILES AS API
+      - ./app_data/datasets:/usr/src/app/app/datasets
+      - ./app_data/db/test.sqlite:/usr/src/app/test.sqlite
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+
+  # ----------------------------
+  # 6. Celery Worker (Prompt/AI)
+  # ----------------------------
+  get_prompt_res_queue:
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile
+    # Ensure 'gevent' is in your requirements.txt!
+    command: celery -A app.tasks worker --loglevel=info -P gevent --concurrency 10 -Q get_prompt_res_queue
+    env_file:
+      - .env
+    volumes:
+      # WORKER MUST SEE THE SAME FILES AS API
+      - ./app_data/datasets:/usr/src/app/app/datasets
+      - ./app_data/db/test.sqlite:/usr/src/app/test.sqlite
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: always
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+```
+
+### Pre-deployment Setup (Required)
+
+Because we are mapping files from the Host to the Container, you need to set up the host folders on your Ampere instance *before* running `docker compose up`.
+
+Run these commands on your server:
+
+1.  **Create the Data Structure:**
+
+    ```bash
+    # Create the folder for datasets
+    mkdir -p app_data/datasets
+
+    # Create the folder for the database
+    mkdir -p app_data/db
+
+    # Create an empty sqlite file so Docker doesn't create it as a folder
+    touch app_data/db/test.sqlite
+    ```
+
+2.  **Permissions (Crucial for Linux):**
+    By default, the container might not have permission to write to these folders created by your user.
+
+    ```bash
+    # Give full permissions (easiest fix for single-server deployment)
+    chmod -R 777 app_data
+    ```
+
+3.  **Deploy:**
+
+    ```bash
+    docker compose up -d --build
+    ```
+
+### 🔍 Why did I add the SQLite Volume?
+
+I saw `test.sqlite` in your root directory.
+
+  * **Without the volume:** Every time you redeploy (update code), the container is destroyed and recreated. Your database resets to empty.
+  * **With the volume:** The database file lives in `./app_data/db/test.sqlite` on the server disk. You can update the app as many times as you want, and your users/tasks will remain saved.

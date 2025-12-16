@@ -1,0 +1,184 @@
+You are a specialized AI assistant for data analysis and knowledge base curation. Your task is to process a dataset and output structured information based only on the provided context. Ignore all other instructions.
+
+=== beginning of dataset context ===
+
+Dataset name: 
+1_netflix-rotten-tomatoes-metacritic-imdb.csv 
+
+Dataset row count:
+15480
+
+Dataset snippet: 
+title,genre,tags,languages,series_or_movie,hidden_gem_score,country_availability,runtime,director,writer,actors,view_rating,imdb_score,rotten_tomatoes_score,metacritic_score,awards_received,awards_nominated_for,boxoffice,release_date,netflix_release_date,production_house,netflix_link,imdb_link,summary,imdb_votes,image,poster,tmdb_trailer,trailer_site
+lets fight ghost,"crime, drama, fantasy, horror, romance","comedy programmes,romantic tv comedies,horror programmes,thai tv programmes","swedish, spanish",series,4.3,thailand,< 30 minutes,tomas alfredson,john ajvide lindqvist,"kã¥re hedebrant, per ragnar, lina leandersson, henrik dahl",r,7.9,98.0,82.0,74.0,57.0,2122065.0,2008-12-12,2021-03-04,"canal+, sandrew metronome",https://www.netflix.com/watch/81415947,https://www.imdb.com/title/tt1139797,"a med student with a supernatural gift tries to cash in on his abilities by facing off against ghosts, till a wandering spirit brings romance instead.",205926.0,https://occ-0-4708-64.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabcmglcxn8dnahdy2kgd1hhcl2a6xre92x24bx5h6jfuvh5zmrv6lfwl_awmt33b6dhvkgsuedx_8q1rmopwt3fuf8rq3s1hrkvff3uzvv2sb3zrtu-lm1zy1ffrakd3nknya_rqwrmw.jpg?r=cd0,https://m.media-amazon.com/images/m/mv5bowm4nty2ntmtzdzlzs00ntgylwezzdmtode3zgi1mzi3zmu5xkeyxkfqcgdeqxvynzi1nzmxnzm@._v1_sx300.jpg,,
+how to build a girl,comedy,"dramas,comedies,films based on books,british",english,movie,7.0,canada,1-2 hour,coky giedroyc,caitlin moran,"paddy considine, cleo, beanie feldstein, dã³nal finn",r,5.8,79.0,69.0,1.0,,70632.0,2020-05-08,2021-03-04,"film 4, monumental pictures, lionsgate",https://www.netflix.com/watch/81041267,https://www.imdb.com/title/tt4193072,"when nerdy johanna moves to london, things get out of hand when she reinvents herself as a bad-mouthed music critic to save her poverty-stricken family.",2838.0,https://occ-0-1081-999.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabe_fxmsbm1e-ssoszr12smki-498sqbwreyhkchdn4uklqvjdops_hj-nhvgbepvwldszmtcrie0kgiy-zteu_eagg.jpg?r=35a,https://m.media-amazon.com/images/m/mv5bzguyn2zlmjytztk2yy00mwzilwiymdktmzflmmezowvlmgnixkeyxkfqcgdeqxvymte1mzi2nziz._v1_sx300.jpg,https://www.youtube.com/watch?v=eibcxpy4okq,youtube
+centigrade,"drama, thriller",thrillers,english,movie,6.4,canada,1-2 hour,brendan walsh,"brendan walsh, daley nixon","genesis rodriguez, vincent piazza",unrated,4.3,,46.0,,,16263.0,2020-08-28,2021-03-04,,https://www.netflix.com/watch/81305978,https://www.imdb.com/title/tt8945942,"trapped in a frozen car during a blizzard, a pregnant woman and her husband fight to survive while the temperatures plummet. inspired by a true story.",1720.0,https://occ-0-1081-999.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabw-fg-2_s3pgsbdbw4nlcwencrkl2ngj7kv5_qqvgz--gt8eg-blyjzm9zaag5kayhefo77975pkatz3yza1zlqwgq.jpg?r=66b,https://m.media-amazon.com/images/m/mv5bodm2mdq5mjktytm1zs00y2m4ltg0mdatzjfjzdm1mdqxzgrmxkeyxkfqcgdeqxvynda1nda2ntk@._v1_sx300.jpg,https://www.youtube.com/watch?v=0rvv7tnulkq,youtube
+anne+,drama,"tv dramas,romantic tv dramas,dutch tv shows",turkish,series,7.7,"belgium,netherlands",< 30 minutes,,,"vahide perã§in, gonca vuslateri, cansu dere, beren gokyildiz",,6.5,,,1.0,,,2016-10-01,2021-03-04,,https://www.netflix.com/watch/81336456,https://www.imdb.com/title/tt6132758,"upon moving into a new place, a 20-something runs into a former flame that triggers memories of past relationships since their split four years ago.",1147.0,https://occ-0-1489-1490.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabeq3p0f50kpnqtymozdpuenqxi3bh6hadry-ympoor0_hm2vzuqizq1v7oihe9imlxazc72w9httdbroorqt-wvkaa.jpg?r=f82,https://m.media-amazon.com/images/m/mv5bnwrkmzdiyjgtota0yi00njzilwfjzjmtythlmte5mwewywu4xkeyxkfqcgdeqxvyody1mdkwoq@@._v1_sx300.jpg,,
+moxie,"animation, short, drama","social issue dramas,teen movies,dramas,comedies,movies based on books",english,movie,8.1,"lithuania,poland,france,iceland,italy,spain,greece,czech republic,belgium,portugal,canada,hungary,mexico,slovakia,sweden,south africa,netherlands,germany,thailand,turkey,singapore,romania,argentina,israel,switzerland,australia,united kingdom,brazil,malaysia,india,colombia,hong kong,japan,south korea,united states,russia",1-2 hour,stephen irwin,,ragga gudrun,,6.3,,,,4.0,,2011-09-22,2021-03-04,,https://www.netflix.com/watch/81078393,https://www.imdb.com/title/tt2023611,"inspired by her moms rebellious past and a confident new friend, a shy 16-year-old publishes an anonymous zine calling out sexism at her school.",63.0,https://occ-0-4039-1500.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabb72ychdshzrb8i5_ig56ufm-qv2bslrymhiqz4tmlipevtmsqayuem6jaxxtv4ec9jla4eptdf5tnx2ivyluwmpy4d3xowfdje63mpxbwu8kanc-j9qhazrmmi.jpg?r=fad,https://m.media-amazon.com/images/m/mv5bodyynwfjodytytu3nc00zmm2ltk3yzetzdqzzju0yzzhmtkzxkeyxkfqcgdeqxvymte2nzyxndcz._v1_sx300.jpg,,
+
+
+Dataset columns with sample unique values and unique value count and ratio: 
+{'title': {'num_of_unique_values': 15057, 'unique_values_count_ratio_to_row_count': 0.9726744186046512, 'top_5_values': ['godzilla', 'kingdom', 'persona', 'shameless', 'full house']}, 'genre': {'num_of_unique_values': 1780, 'unique_values_count_ratio_to_row_count': 0.11498708010335917, 'top_5_values': ['comedy', 'drama', 'documentary', 'comedy, drama', 'drama, romance']}, 'tags': {'num_of_unique_values': 13362, 'unique_values_count_ratio_to_row_count': 0.8631782945736434, 'top_5_values': ['dramas', 'comedies,stand-up comedy', 'comedies', 'stand-up comedy,comedies', 'comedies,russian movies']}, 'languages': {'num_of_unique_values': 1437, 'unique_values_count_ratio_to_row_count': 0.09282945736434109, 'top_5_values': ['english', 'japanese', 'korean', 'spanish', 'hindi']}, 'series_or_movie': {'num_of_unique_values': 2, 'unique_values_count_ratio_to_row_count': 0.00012919896640826872, 'top_5_values': ['movie', 'series']}, 'hidden_gem_score': {'num_of_unique_values': 93, 'unique_values_count_ratio_to_row_count': 0.006007751937984496, 'top_5_values': [8.0, 7.9, 8.1, 8.2, 8.3]}, 'country_availability': {'num_of_unique_values': 7530, 'unique_values_count_ratio_to_row_count': 0.48643410852713176, 'top_5_values': ['japan', 'south korea', 'united kingdom', 'switzerland,germany', 'united states']}, 'runtime': {'num_of_unique_values': 4, 'unique_values_count_ratio_to_row_count': 0.00025839793281653745, 'top_5_values': ['1-2 hour', '< 30 minutes', '> 2 hrs', '30-60 mins']}, 'director': {'num_of_unique_values': 6745, 'unique_values_count_ratio_to_row_count': 0.4357235142118863, 'top_5_values': ['steven spielberg', 'raãºl campos, jan suter', 'johnnie to', 'woody allen', 'marcus raboy']}, 'writer': {'num_of_unique_values': 9650, 'unique_values_count_ratio_to_row_count': 0.6233850129198967, 'top_5_values': ['fujio f. fujiko', 'jing wong', 'woody allen', 'pedro almodã³var', 'george lucas']}, 'actors': {'num_of_unique_values': 12934, 'unique_values_count_ratio_to_row_count': 0.8355297157622739, 'top_5_values': ['noriko ohara, nobuyo ã\x94yama, kaneta kimotsuki, michiko nomura', 'liam neeson, ewan mcgregor, natalie portman, jake lloyd', 'inã©s sainz, luis ernesto franco, rafinha bastos, tiki barber', 'yumi kakazu, subaru kimura, wasabi mizuta, megumi ohara', 'priyanka chopra, shah rukh khan, isha koppikar, arjun rampal']}, 'view_rating': {'num_of_unique_values': 26, 'unique_values_count_ratio_to_row_count': 0.0016795865633074936, 'top_5_values': ['r', 'pg-13', 'not rated', 'tv-ma', 'tv-14']}, 'imdb_score': {'num_of_unique_values': 83, 'unique_values_count_ratio_to_row_count': 0.005361757105943153, 'top_5_values': [6.5, 6.6, 6.8, 6.3, 6.4]}, 'rotten_tomatoes_score': {'num_of_unique_values': 101, 'unique_values_count_ratio_to_row_count': 0.006524547803617571, 'top_5_values': [100.0, 80.0, 67.0, 50.0, 92.0]}, 'metacritic_score': {'num_of_unique_values': 95, 'unique_values_count_ratio_to_row_count': 0.006136950904392765, 'top_5_values': [51.0, 66.0, 68.0, 63.0, 65.0]}, 'awards_received': {'num_of_unique_values': 130, 'unique_values_count_ratio_to_row_count': 0.008397932816537468, 'top_5_values': [1.0, 2.0, 3.0, 4.0, 5.0]}, 'awards_nominated_for': {'num_of_unique_values': 200, 'unique_values_count_ratio_to_row_count': 0.012919896640826873, 'top_5_values': [1.0, 2.0, 3.0, 4.0, 5.0]}, 'boxoffice': {'num_of_unique_values': 3836, 'unique_values_count_ratio_to_row_count': 0.24780361757105943, 'top_5_values': [474544677.0, 509.0, 2223961.0, 27007844.0, 328828874.0]}, 'release_date': {'num_of_unique_values': 5314, 'unique_values_count_ratio_to_row_count': 0.34328165374677, 'top_5_values': [Timestamp('2018-09-21 00:00:00'), Timestamp('2018-10-12 00:00:00'), Timestamp('2017-09-01 00:00:00'), Timestamp('2018-04-06 00:00:00'), Timestamp('2017-09-08 00:00:00')]}, 'netflix_release_date': {'num_of_unique_values': 1823, 'unique_values_count_ratio_to_row_count': 0.11776485788113696, 'top_5_values': [Timestamp('2015-04-14 00:00:00'), Timestamp('2020-12-12 00:00:00'), Timestamp('2015-09-01 00:00:00'), Timestamp('2018-10-01 00:00:00'), Timestamp('2020-11-27 00:00:00')]}, 'production_house': {'num_of_unique_values': 3813, 'unique_values_count_ratio_to_row_count': 0.24631782945736433, 'top_5_values': ['netflix', 'paramount pictures', 'universal pictures', 'columbia pictures corporation', 'working title films']}, 'netflix_link': {'num_of_unique_values': 15480, 'unique_values_count_ratio_to_row_count': 1.0, 'top_5_values': ['https://www.netflix.com/watch/70241791', 'https://www.netflix.com/watch/81415947', 'https://www.netflix.com/watch/81041267', 'https://www.netflix.com/watch/81305978', 'https://www.netflix.com/watch/81336456']}, 'imdb_link': {'num_of_unique_values': 12847, 'unique_values_count_ratio_to_row_count': 0.8299095607235142, 'top_5_values': ['https://www.imdb.com/title/tt0120915', 'https://www.imdb.com/title/tt5607970', 'https://www.imdb.com/title/tt0461936', 'https://www.imdb.com/title/tt2582782', 'https://www.imdb.com/title/tt1396484']}, 'summary': {'num_of_unique_values': 15449, 'unique_values_count_ratio_to_row_count': 0.9979974160206718, 'top_5_values': ['a surly septuagenarian gets another chance at her 20s after having her photo snapped at a studio that magically takes 50 years off her life.', 'during the late eastern han dynasty, power, intrigue and military ambition collide as rulers, generals and court officials vie for dominance.', 'an aspiring musician battles age-old caste divides to be able to learn the art of a classical instrument from a traditionalist, veteran percussionist.', 'working out is easy when youre having fun! sing and dance along with pinkfong, baby shark and friends to stay healthy and strong.', 'this educational series for tiny tots features a toe-tapping spin on nursery rhymes with upbeat tunes and a diverse set of easy-to-follow lessons.']}, 'imdb_votes': {'num_of_unique_values': 7886, 'unique_values_count_ratio_to_row_count': 0.5094315245478036, 'top_5_values': [7.0, 10.0, 8.0, 9.0, 14.0]}, 'image': {'num_of_unique_values': 15479, 'unique_values_count_ratio_to_row_count': 0.9999354005167959, 'top_5_values': ['https://occ-0-37-33.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabtdjkhul3ec8ls7s_e_bz5_bdt49mc8ajyxu93pdrk5ume73iofrwrlvxpdjjj9flawtyxvtmzgxo2xj_wuwggd1ujh9jvxsqcs6fhwd4awddf2hkjrevbpobo0.jpg?r=647', 'https://occ-0-4708-64.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabcmglcxn8dnahdy2kgd1hhcl2a6xre92x24bx5h6jfuvh5zmrv6lfwl_awmt33b6dhvkgsuedx_8q1rmopwt3fuf8rq3s1hrkvff3uzvv2sb3zrtu-lm1zy1ffrakd3nknya_rqwrmw.jpg?r=cd0', 'https://occ-0-1081-999.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabe_fxmsbm1e-ssoszr12smki-498sqbwreyhkchdn4uklqvjdops_hj-nhvgbepvwldszmtcrie0kgiy-zteu_eagg.jpg?r=35a', 'https://occ-0-1081-999.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabw-fg-2_s3pgsbdbw4nlcwencrkl2ngj7kv5_qqvgz--gt8eg-blyjzm9zaag5kayhefo77975pkatz3yza1zlqwgq.jpg?r=66b', 'https://occ-0-1489-1490.1.nflxso.net/dnm/api/v6/evlcitjppcvcry0bzlefb5-qjkc/aaaabeq3p0f50kpnqtymozdpuenqxi3bh6hadry-ympoor0_hm2vzuqizq1v7oihe9imlxazc72w9httdbroorqt-wvkaa.jpg?r=f82']}, 'poster': {'num_of_unique_values': 11666, 'unique_values_count_ratio_to_row_count': 0.7536175710594315, 'top_5_values': ['https://m.media-amazon.com/images/m/mv5bytrhnjcwnwqtmgjmmi00nmqylwe2yzitodvmmtdjnwi0zda2xkeyxkfqcgdeqxvyntayodkwoq@@._v1_sx300.jpg', 'https://m.media-amazon.com/images/m/mv5bmzaymwe0mjgtmdvjns00zdmylwe4njqtnwu2zdgyytlmmjdjxkeyxkfqcgdeqxvynjq2mjq5nzm@._v1_sx300.jpg', 'https://images-na.ssl-images-amazon.com/images/m/mv5bmjkxmjm5mtkzm15bml5banbnxkftztgwndawodizmti@._v1_sx300.jpg', 'https://m.media-amazon.com/images/m/mv5bzdvkzmi0yzatnzdjyi00zjhhlwe1odetmwmzmwmznda0nmq4xkeyxkfqcgdeqxvynzyzodm3mzg@._v1_sx300.jpg', 'https://m.media-amazon.com/images/m/mv5bmtg4nda1ota5nf5bml5banbnxkftztgwmdq2mdm5ode@._v1_sx300.jpg']}, 'tmdb_trailer': {'num_of_unique_values': 7040, 'unique_values_count_ratio_to_row_count': 0.45478036175710596, 'top_5_values': ['https://www.youtube.com/watch?v=bd7bpg-zdjq', 'https://www.youtube.com/watch?v=sejubrgzpz4', 'https://www.youtube.com/watch?v=_cjriafr2pe', 'https://www.youtube.com/watch?v=myvb4olk4nq', 'https://www.youtube.com/watch?v=xkjmec5ieok']}, 'trailer_site': {'num_of_unique_values': 2, 'unique_values_count_ratio_to_row_count': 0.00012919896640826872, 'top_5_values': ['youtube', 'vimeo']}} 
+
+Inferred Temporal Granularity Map (Format: JSON object {col_name: 'granularity', ...} or 'N/A'): 
+{'release_date': 'less than a minute', 'netflix_release_date': 'less than a minute'} 
+
+
+=== end of dataset context ===
+
+**Column Classifications**
+
+Identifier: unique key for linking data.
+Example: customer_id, product_sku
+
+Dimensional: for grouping/filtering/categorizing.
+Example: country, marital_status
+
+Metric: numerical values to measure/aggregate.
+Example: revenue, sales_quantity
+
+Temporal: dates/timestamps.
+Example: order_date, login_timestamp
+
+Geospatial: location data.
+Example: latitude, longitude, zip_code
+
+Scientific: values with units (scientific domain).
+Example: temperature_celsius, pressure_bar
+
+Descriptive: qualitative attributes.
+Example: product_name, user_bio
+
+PII: sensitive info.
+Example: email_address, full_name
+
+System/Metadata: system-generated.
+Example: created_at, last_modified
+
+Unknown: unclear meaning
+
+Instructions
+1. Domain + Columns
+
+Infer dataset domain and a concise description.
+
+For each column, output:
+- classification (from the list above)
+- confidence (low, medium, high)
+- data_type (string, integer, float, datetime)
+- type (Categorical or Numerical)
+- unit (only for Scientific columns, otherwise empty)
+- expected_values (categorical: list of values, numerical: range of values, uncertain: empty)
+
+2. Common Column Combination
+
+- Suggest maximum 5 new metrics by combining existing columns.
+- Only use Metric or Dimensional columns.
+- Expression must be Pandas-eval safe (+, -, *, /, **).
+- Ensure referenced columns exist.
+
+Example:
+
+{
+  "name": "profit_margin",
+  "description": "Calculate margin as (revenue - cost) / revenue.",
+  "operation": {
+    "source_columns": ["revenue", "cost"],
+    "expression": "(revenue - cost) / revenue"
+  }
+}
+
+3. Common Column Cleaning or Transformation
+
+- Suggest maximum 5 new or cleaned columns.
+- Must use the correct transformation type:
+
+**Supported Transformation Types**
+
+MAP â†’ remap categorical values into grouped labels.
+
+{
+  "type": "map",
+  "source_column": "education_level",
+  "mapping": {"PhD": "Higher_Ed", "Basic": "Secondary_Ed"}
+}
+
+
+MAP_RANGE â†’ bin numeric values into labeled ranges.
+
+{
+  "type": "map_range",
+  "source_column": "gross_income",
+  "ranges": [
+    {"range": "0-30000", "label": "Low"},
+    {"range": "30001-80000", "label": "Medium"},
+    {"range": "80001-inf", "label": "High"}
+  ]
+}
+
+
+DATE_OP â†’ extract YEAR, MONTH, DAY, or WEEKDAY from Temporal columns. 
+Note: Use the inferred granularity to guide the relevance of the DATE_OP.
+
+{
+  "type": "date_op",
+  "source_column": "order_date",
+  "function": "MONTH"
+}
+
+
+MATH_OP â†’ simple math expressions using numeric columns.
+
+{
+  "type": "math_op",
+  "source_columns": ["monthly_income"],
+  "expression": "monthly_income * 12"
+}
+
+
+**Transformation JSON Structure**
+
+Each must include:
+
+name: new column name (snake_case)
+description: short explanation
+operation: valid MAP / MAP_RANGE / DATE_OP / MATH_OP object
+
+---
+
+Final output JSON schema:
+
+{
+  "domain": "string",
+  "description": "string",
+  "is_time_series": "boolean",
+  "inferred_granularity": "string",
+  "columns": [
+    {
+      "name": "string",
+      "classification": "string",
+      "confidence_score": "string",
+      "data_type": "string",
+      "type": "string",
+      "unit": "string",
+      "expected_values": ["string"]
+    }
+  ],
+  "common_column_combination": [
+    {
+      "name": "string",
+      "description": "string",
+      "operation": {
+        "source_columns": ["col1","col2"],
+        "expression": "..."
+      }
+    }
+  ],
+  "common_column_cleaning_or_transformation": [
+    {
+      "name": "string",
+      "description": "string",
+      "operation": { ... }
+    }
+  ]
+}

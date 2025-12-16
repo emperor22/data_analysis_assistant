@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator, conlist, con
 from typing import List, Union, Dict, Any, Literal
 import re
 from typing import Optional
+from typing_extensions import NotRequired
 from enum import Enum
 from app.logger import logger
 
@@ -19,18 +20,27 @@ class TaskStatus(Enum):
     doing_initial_tasks_run = 'RUNNING INITIAL ANALYSES TASKS'
     doing_additional_tasks_run = 'RUNNING ADDITIONAL ANALYSES TASKS'
     doing_customized_tasks_run = 'RUNNING USER CUSTOMIZED ANALYSIS TASKS'
+    doing_customized_tasks_run_with_new_dataset = 'RUNNING USER CUSTOMIZED ANALYSIS TASKS WITH NEW DATASET'
     
     initial_tasks_run_finished = 'INITIAL ANALYSIS TASKS FINISHED'
     additional_tasks_run_finished = 'ADDITIONAL ANALYSES TASKS FINISHED'
     customized_tasks_run_finished = 'USER CUSTOMIZED ANALYSIS TASKS FINISHED'
+    customized_tasks_run_with_new_dataset_finished = 'USER CUSTOMIZED ANALYSIS TASKS WITH NEW DATASET FINISHED'
+    
+    # failed attempts
+    failed_because_blacklisted_dataset = 'TASK FAILED BECAUSE DATASET IS BLACKLISTED'
     
 from typing import TypedDict
 
-RunInfoSchema = TypedDict('RunInfoSchema', {'request_id': str, 'user_id': str, 'parquet_file': str})
+RunInfoSchema = TypedDict('RunInfoSchema', {'request_id': str, 'user_id': str, 'parquet_file': str, 
+                                            'filename': str, 'send_result_to_email': str, 'email': str})
+
+
     
 class GetCurrentUserModel(BaseModel):
     username: str
     user_id: str
+    email: str
     
 class UserRegisterSchema(BaseModel):
     username: str
@@ -144,11 +154,13 @@ class FilterStepModel(BaseModel):
     
     model_config = ConfigDict(extra='forbid')
 
+
+groupby_allowed_calc = Literal['mean', 'median', 'min', 'max', 'count', 'size', 'sum']
 class GroupByStepModel(BaseModel):
     function: Literal['groupby']
     columns_to_group_by: List[str] = Field(min_length=1)
     columns_to_aggregate: List[str] = Field(min_length=1)
-    calculation: List[Literal['mean', 'median', 'min', 'max', 'count', 'size', 'sum']]
+    calculation: groupby_allowed_calc | List[groupby_allowed_calc] 
 
     model_config = ConfigDict(extra='forbid')
     
@@ -183,7 +195,18 @@ class ColStatsStepModel(BaseModel):
     calculation: List[Literal['mean', 'median', 'min', 'max', 'count', 'sum']]
     
     model_config = ConfigDict(extra='forbid')
+
+resample_allowed_calc = Literal['sum', 'mean', 'median', 'min', 'max', 'first', 'last']
+class ResampleDataStepModel(BaseModel):
+    function: Literal['resample_data']
+    date_column: List[str] | str
+    frequency: Literal['day', 'week', 'month', 'year', 'quarter']   
+    columns_to_group_by: List[str]
+    columns_to_aggregate: List[str] | str
+    calculation: resample_allowed_calc | List[resample_allowed_calc] 
     
+    model_config = ConfigDict(extra='forbid')
+
 class CommonTaskModel(BaseModel):
     name: str
     description: str
@@ -195,7 +218,7 @@ class CommonTaskModel(BaseModel):
 
 
 STEP_MODELS = {'filter': FilterStepModel, 'groupby': GroupByStepModel, 'get_top_or_bottom_N_entries': TopBottomNStepModel, 
-               'get_proportion': ProportionStepModel, 'get_column_statistics': ColStatsStepModel}
+               'get_proportion': ProportionStepModel, 'get_column_statistics': ColStatsStepModel, 'resample_data': ResampleDataStepModel}
 TRANSFORM_MODELS = {'map': MapOperation, 'map_range': MapRangeOperation, 'date_op': DateOpOperation, 'math_op': MathOpOperation}
 COMBINATION_MODELS = {'column_combination': CommonColumnCombinationOperation}
 
@@ -203,7 +226,8 @@ def validate_model_wrapper(val, model):
     try:
         model.model_validate(val)
         return True
-    except ValidationError:
+    except ValidationError as e:
+        logger.debug(f'{e}')
         return False
 
 def log_invalid_values(run, invalid_vals_num, req_id, common_task_id):
@@ -237,6 +261,8 @@ def filter_out_invalid_values(values, model_key_func, model_map, run, req_id, co
 class DatasetAnalysisModelPartOne(BaseModel):
     domain: str
     description: str
+    is_time_series: bool
+    inferred_granularity: str
     columns: List[ColumnModel]
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_column_combination: list[CommonColumnCombinationModel] = []
@@ -319,6 +345,7 @@ class DataTasks(BaseModel):
     
 class ExecuteAnalysesSchema(DataTasks):
     request_id: str
+    send_result_to_email: bool
     
 class AdditionalAnalysesRequestSchema(BaseModel):
     model: str
