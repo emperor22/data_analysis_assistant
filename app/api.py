@@ -329,6 +329,7 @@ async def execute_analyses_with_new_dataset(request: Request, file: UploadFile, 
     
     def remove_status_field_from_res(dct):
         lst = []
+        
         for task in dct:
             task = {i: j for i, j in task.items() if i != 'status'}
             lst.append(task)
