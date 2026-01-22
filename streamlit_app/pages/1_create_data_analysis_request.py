@@ -6,7 +6,7 @@ import re
 
 
         
-
+LLM_MODEL_LIST_GOOGLE = ['gemini-2.5-flash', 'gemma-3-27b-it', 'gemini-2.5-flash-lite']
 
 
 first_req_tab, additional_req_tab = st.tabs(['Create data analysis request', 'Request aditional analyses'])
@@ -15,21 +15,23 @@ with first_req_tab:
     analysis_req_form = st.form('analysis_req_form', enter_to_submit=False)
 
     with analysis_req_form:
+        name = st.text_input('Enter name for your run', max_chars=50)
         file = st.file_uploader('Select your dataset file', accept_multiple_files=False, type=['csv'])
-        model = st.selectbox('Select model', ['gemini-2.5-flash', 'gemma-3-27b-it', 'gemini-2.5-flash-lite'])
+        model = st.selectbox('Select model', LLM_MODEL_LIST_GOOGLE)
+        send_result_to_email = st.checkbox('Send result to email')
         
         task_count = st.selectbox('Select number of analyses to output', [10, 20])
         
         if st.form_submit_button('Create Analysis Request'):
-            if file and model and task_count:
-                res = make_analysis_request(file, model, task_count)
+            if name and file and model and task_count:
+                res = make_analysis_request(name=name, uploaded_file=file, task_count=task_count, model=model, send_result_to_email=send_result_to_email)
                 
                 if res:
                     st.success('request task processed')
                     time.sleep(1)
                     st.rerun()
             else:
-                st.error('Please upload the file and choose the parameters')
+                st.error('Please enter name, upload the dataset file, and choose the parameters')
                 time.sleep(1)
                 st.rerun()
                 

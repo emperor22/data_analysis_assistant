@@ -25,7 +25,7 @@ if task_id not in st.session_state.tasks:
     
     if res:
         tasks = res['res']['original_common_tasks']
-        tasks = json.loads(tasks)['original_common_tasks']
+        tasks = json.loads(tasks)['tasks']
         st.session_state.tasks[task_id] = tasks
         
         plots = res['plot_result']

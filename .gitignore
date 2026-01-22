@@ -55,8 +55,10 @@ docs/_build/
 *.sqlite
 *.db
 .env
+.env.*
 *.code-workspace
 
 resp_jsons/
 test_dataset/
+app/datasets
 *.csv

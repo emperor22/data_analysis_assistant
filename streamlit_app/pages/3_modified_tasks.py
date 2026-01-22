@@ -45,7 +45,7 @@ if task_id not in st.session_state.tasks:
     
     if res:
         tasks = res['res']['original_common_tasks']
-        tasks = json.loads(tasks)['original_common_tasks']
+        tasks = json.loads(tasks)['tasks']
         st.session_state.tasks[task_id] = tasks
         
         plots = res['plot_result']
@@ -64,6 +64,7 @@ if task_id not in st.session_state.modified_tasks or len(st.session_state.modifi
         imported_tasks = manage_customized_tasks(task_id, 'fetch', slot=1)['res']
         imported_tasks = json.loads(imported_tasks)['customized_tasks']
         
+        time.sleep(1)
         loading_data_txt.empty()
     else:
         loading_data_txt.write('Loading imported original tasks..')
@@ -262,8 +263,13 @@ with task_overview_tab:
                 
                 
     st.markdown('---')
-    with st.expander('See raw JSON'):
-        st.code(json.dumps({'modified_tasks': st.session_state.modified_tasks[task_id]}, indent=4))
+
+    
+    # from utils import download_excel_result
+    
+    # res = download_excel_result(request_id=task_id, task_id=2)
+    
+    # if st.download_button('Download', data=res.content, file_name=f'{task_id}.xlsx')
     
     if st.button('Process tasks'):
         data_tasks = {'common_tasks': st.session_state.modified_tasks[task_id], 
@@ -275,7 +281,10 @@ with task_overview_tab:
         else:
             res = send_tasks_to_process_w_new_dataset(new_dataset_task_req, data_tasks, task_id)
         
-        st.write(res)
+        if res:
+            st.success('Tasks are being processed')
+            time.sleep(1)
+            st.rerun()
         
 
 with task_result_tab:
@@ -286,7 +295,7 @@ with task_result_tab:
         st.stop()
 
     modified_tasks_w_result = res_modified_tasks['res']['common_tasks_w_result']
-    modified_tasks_w_result = json.loads(modified_tasks_w_result)['common_tasks_w_result']
+    modified_tasks_w_result = json.loads(modified_tasks_w_result)['tasks']
     
     modified_tasks_plots = res_modified_tasks['plot_result']
     

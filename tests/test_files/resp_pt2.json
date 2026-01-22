@@ -1,263 +1,222 @@
 {
     "common_tasks": [
         {
-            "name": "Content Distribution by Country and Type",
+            "name": "Monthly Total Sales Trend by Region",
             "task_id": 1,
-            "description": "Analyze the count of movies and series available in each country to understand regional content focus.",
+            "description": "Calculate the total sales for each region on a monthly basis to observe sales trends over time.",
             "steps": [
                 {
-                    "function": "groupby",
-                    "columns_to_group_by": [
-                        "country_availability",
-                        "series_or_movie"
-                    ],
+                    "function": "resample_data",
+                    "date_column": "order_date",
+                    "frequency": "month",
                     "columns_to_aggregate": [
-                        "series_or_movie"
+                        "sales"
                     ],
-                    "calculation": [
-                        "count"
+                    "calculation": "sum",
+                    "static_group_cols": [
+                        "region"
                     ]
                 }
             ],
             "score": "high"
         },
         {
-            "name": "Identify Top Genres by Hidden Gem Score",
+            "name": "Top 10 Product Names by Total Profit",
             "task_id": 2,
-            "description": "Determine the top 5 genres with the highest average 'hidden gem scores', indicating potentially undervalued content categories.",
+            "description": "Identify the 10 product names that have generated the highest total profit across all transactions.",
             "steps": [
                 {
                     "function": "groupby",
                     "columns_to_group_by": [
-                        "genre"
+                        "product_name"
                     ],
                     "columns_to_aggregate": [
-                        "hidden_gem_score"
+                        "profit"
                     ],
-                    "calculation": [
-                        "mean"
-                    ]
+                    "calculation": "sum"
                 },
                 {
                     "function": "get_top_or_bottom_N_entries",
-                    "sort_by_column_name": "hidden_gem_score",
-                    "order": "top",
-                    "number_of_entries": 5,
-                    "return_columns": [
-                        "genre",
-                        "hidden_gem_score"
-                    ]
-                }
-            ],
-            "score": "high"
-        },
-        {
-            "name": "Critical Reception for Drama Content",
-            "task_id": 3,
-            "description": "Understand the proportion of 'Fresh' vs. 'Rotten' critical reception ratings specifically for content classified as 'drama'.",
-            "steps": [
-                {
-                    "function": "filter",
-                    "column_name": "genre",
-                    "operator": "in",
-                    "values": [
-                        "drama"
-                    ]
-                },
-                {
-                    "function": "get_proportion",
-                    "column_name": [
-                        "critical_reception_rating"
-                    ]
-                }
-            ],
-            "score": "high"
-        },
-        {
-            "name": "Evaluate Production House Performance by Critic Scores",
-            "task_id": 4,
-            "description": "Compare the average combined critic scores ('average_critic_score') across different production houses to gauge their critical success.",
-            "steps": [
-                {
-                    "function": "groupby",
-                    "columns_to_group_by": [
-                        "production_house"
-                    ],
-                    "columns_to_aggregate": [
-                        "average_critic_score"
-                    ],
-                    "calculation": [
-                        "mean"
-                    ]
-                }
-            ],
-            "score": "high"
-        },
-        {
-            "name": "Annual Movie Awards Recognition Trends",
-            "task_id": 5,
-            "description": "Analyze the average total awards recognition for movies based on their Netflix release year to observe trends over time.",
-            "steps": [
-                {
-                    "function": "filter",
-                    "column_name": "series_or_movie",
-                    "operator": "==",
-                    "values": [
-                        "movie"
-                    ]
-                },
-                {
-                    "function": "groupby",
-                    "columns_to_group_by": [
-                        "netflix_release_year"
-                    ],
-                    "columns_to_aggregate": [
-                        "total_awards_recognition"
-                    ],
-                    "calculation": [
-                        "mean"
-                    ]
-                }
-            ],
-            "score": "high"
-        },
-        {
-            "name": "Top-Grossing Genres by Box Office",
-            "task_id": 6,
-            "description": "Identify the top 10 genres with the highest total box office earnings to understand market revenue drivers.",
-            "steps": [
-                {
-                    "function": "groupby",
-                    "columns_to_group_by": [
-                        "genre"
-                    ],
-                    "columns_to_aggregate": [
-                        "boxoffice"
-                    ],
-                    "calculation": [
-                        "sum"
-                    ]
-                },
-                {
-                    "function": "get_top_or_bottom_N_entries",
-                    "sort_by_column_name": "boxoffice",
+                    "sort_by_column_name": "profit",
                     "order": "top",
                     "number_of_entries": 10,
                     "return_columns": [
-                        "genre",
-                        "boxoffice"
+                        "product_name",
+                        "profit"
                     ]
                 }
             ],
             "score": "high"
         },
         {
-            "name": "Hidden Gem Score Difference for Critically Acclaimed Content",
-            "task_id": 7,
-            "description": "Calculate descriptive statistics (mean, median, min, max) for the 'hidden_gem_score_difference' for content rated 'Fresh' by critics.",
+            "name": "Average Profit Margin per Product Sub-Category",
+            "task_id": 3,
+            "description": "Calculate the average profit margin for each product sub-category to assess their relative profitability.",
             "steps": [
-                {
-                    "function": "filter",
-                    "column_name": "critical_reception_rating",
-                    "operator": "==",
-                    "values": [
-                        "Fresh"
-                    ]
-                },
-                {
-                    "function": "get_column_statistics",
-                    "column_name": [
-                        "hidden_gem_score_difference"
-                    ],
-                    "calculation": [
-                        "mean",
-                        "median",
-                        "min",
-                        "max"
-                    ]
-                }
-            ],
-            "score": "high"
-        },
-        {
-            "name": "Content Runtime Distribution in US",
-            "task_id": 8,
-            "description": "Determine the proportional distribution of content runtime categories (Short, Medium, Long, Very Long) for content available in the United States.",
-            "steps": [
-                {
-                    "function": "filter",
-                    "column_name": "country_availability",
-                    "operator": "in",
-                    "values": [
-                        "united states"
-                    ]
-                },
-                {
-                    "function": "get_proportion",
-                    "column_name": [
-                        "content_runtime_category"
-                    ]
-                }
-            ],
-            "score": "high"
-        },
-        {
-            "name": "Top Languages for Series by Popularity-Adjusted IMDb Score",
-            "task_id": 9,
-            "description": "Identify the top 5 languages associated with series based on their total 'weighted_imdb_score', reflecting both rating and popularity.",
-            "steps": [
-                {
-                    "function": "filter",
-                    "column_name": "series_or_movie",
-                    "operator": "==",
-                    "values": [
-                        "series"
-                    ]
-                },
                 {
                     "function": "groupby",
                     "columns_to_group_by": [
-                        "languages"
+                        "sub_category"
                     ],
                     "columns_to_aggregate": [
-                        "weighted_imdb_score"
+                        "profit_margin"
                     ],
-                    "calculation": [
-                        "sum"
-                    ]
+                    "calculation": "mean"
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Total Net Sales and Quantity by Shipping Tier",
+            "task_id": 4,
+            "description": "Summarize total net sales and total quantity for each shipping tier to evaluate the performance of different shipping services.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "shipping_tier"
+                    ],
+                    "columns_to_aggregate": [
+                        "net_sales",
+                        "quantity"
+                    ],
+                    "calculation": "sum"
+                }
+            ],
+            "score": "medium"
+        },
+        {
+            "name": "Sales and Profit by Discount Category",
+            "task_id": 5,
+            "description": "Analyze the total sales and total profit generated by different discount categories to understand the impact of discounting strategies.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "discount_category"
+                    ],
+                    "columns_to_aggregate": [
+                        "sales",
+                        "profit"
+                    ],
+                    "calculation": "sum"
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Top 5 Customer IDs by Total Discount Amount",
+            "task_id": 6,
+            "description": "Identify the top 5 customer IDs who have received the largest total discount amount, indicating high-value discount beneficiaries.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "customer_id"
+                    ],
+                    "columns_to_aggregate": [
+                        "discount_amount"
+                    ],
+                    "calculation": "sum"
                 },
                 {
                     "function": "get_top_or_bottom_N_entries",
-                    "sort_by_column_name": "weighted_imdb_score",
+                    "sort_by_column_name": "discount_amount",
                     "order": "top",
                     "number_of_entries": 5,
                     "return_columns": [
-                        "languages",
-                        "weighted_imdb_score"
+                        "customer_id",
+                        "discount_amount"
                     ]
+                }
+            ],
+            "score": "medium"
+        },
+        {
+            "name": "Annual Average Item Price Trend",
+            "task_id": 7,
+            "description": "Calculate the average price per item for each year to observe annual pricing trends and strategies.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "order_year"
+                    ],
+                    "columns_to_aggregate": [
+                        "average_item_price"
+                    ],
+                    "calculation": "mean"
                 }
             ],
             "score": "high"
         },
         {
-            "name": "Average IMDb Score by View Rating",
-            "task_id": 10,
-            "description": "Compare the average IMDb scores across different content view ratings (e.g., R, PG-13, TV-MA) to assess audience reception by rating category.",
+            "name": "Total Sales and Profit by Segment for 'Furniture' Category",
+            "task_id": 8,
+            "description": "Analyze total sales and profit generated by different customer segments specifically for products within the 'Furniture' category.",
             "steps": [
+                {
+                    "function": "filter",
+                    "column_name": "category",
+                    "operator": "in",
+                    "values": [
+                        "furniture"
+                    ]
+                },
                 {
                     "function": "groupby",
                     "columns_to_group_by": [
-                        "view_rating"
+                        "segment"
                     ],
                     "columns_to_aggregate": [
-                        "imdb_score"
+                        "sales",
+                        "profit"
                     ],
-                    "calculation": [
-                        "mean"
-                    ]
+                    "calculation": "sum"
                 }
             ],
             "score": "high"
+        },
+        {
+            "name": "Proportion of Sales by Product Category",
+            "task_id": 9,
+            "description": "Determine the percentage contribution of each product category to the total sales, highlighting major revenue streams.",
+            "steps": [
+                {
+                    "function": "get_proportion",
+                    "column_name": [
+                        "category"
+                    ]
+                }
+            ],
+            "score": "medium"
+        },
+        {
+            "name": "Average Sales and Quantity per City for 'Expedited' Shipping Tier",
+            "task_id": 10,
+            "description": "Calculate the average sales and quantity per city for orders that utilized the 'Expedited' shipping tier to identify high-volume expedited shipping locations.",
+            "steps": [
+                {
+                    "function": "filter",
+                    "column_name": "shipping_tier",
+                    "operator": "in",
+                    "values": [
+                        "Expedited"
+                    ]
+                },
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "city"
+                    ],
+                    "columns_to_aggregate": [
+                        "sales",
+                        "quantity"
+                    ],
+                    "calculation": "mean"
+                }
+            ],
+            "score": "medium"
         }
     ]
 }

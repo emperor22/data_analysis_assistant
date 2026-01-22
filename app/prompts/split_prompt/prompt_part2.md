@@ -29,14 +29,23 @@ Supported Functions:
 
 - groupby -> {"function": "groupby", "columns_to_group_by": ["string"], "columns_to_aggregate": ["string"], "calculation": ["mean","median","min","max","count","size","sum]}
 
-- filter -> {"function": "filter", "column_name": "string", "operator": "string", "values": [any]}
+- filter -> {"function: "filter", "column_name": "string", "operator": "string", "values": [any]}
     Categorical: operator = "in", values = array of strings
     Numerical: operator = [">", "<", ">=", "<=", "==", "!=", "between"], values = numbers
 
 - get_top_or_bottom_N_entries -> {"function": "get_top_or_bottom_N_entries", "sort_by_column_name": "string", "order": "top|bottom", "number_of_entries": "int", "return_columns": ["string"]}
 - get_proportion -> {"function": "get_proportion", "column_name": ["string"], "values": ["optional"]}
 - get_column_statistics -> {"function": "get_column_statistics", "column_name": ["string"], "calculation": ["mean","median","min","max","count"]}
-- resample_data	-> {"function": "resample_data", "date_column": "string", "frequency": ["day", "week", "month", "year", "quarter"], "columns_to_group_by": ["string"], "columns_to_aggregate": ["string"], "calculation": ["sum", "mean", "median", "min", "max", "first", "last"]}
+
+- resample_data (Aggregates time-series data to a new frequency. Use ONLY for trend analysis across time buckets (e.g., converting daily sales to monthly totals).)
+{
+  "function": "resample_data",
+  "date_column": "The specific datetime column to use as the timeline.",
+  "frequency": ["day", "week", "month", "year", "quarter"],
+  "columns_to_aggregate": "List of numeric columns to calculate.",
+  "calculation": "The math operation applied to each time bucket. One of ["sum", "mean", "median", "min", "max", "first", "last"]",
+  "static_group_cols": "Optional: Categorical columns to keep (e.g., 'Region') to see trends per category."
+}
 
 **Example common_task**
 
@@ -71,7 +80,7 @@ Supported Functions:
       "function": "resample_data",
       "date_column": "Date",
       "frequency": "month",
-      "columns_to_group_by": ["City"],
+      "static_group_cols": ["City"],
       "columns_to_aggregate": ["Revenue"],
       "calculation": "sum"
     }

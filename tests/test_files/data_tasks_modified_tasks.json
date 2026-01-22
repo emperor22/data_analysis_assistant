@@ -1,0 +1,49 @@
+{"common_tasks": [
+        {
+            "name": "Monthly Total Sales Trend by Region",
+            "task_id": 1,
+            "description": "Calculate the total sales for each region on a monthly basis to observe sales trends over time.",
+            "steps": [
+                {
+                    "function": "resample_data",
+                    "date_column": "order_date",
+                    "frequency": "month",
+                    "columns_to_aggregate": [
+                        "sales"
+                    ],
+                    "calculation": "sum",
+                    "static_group_cols": [
+                        "region"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Top 10 Product Names by Total Profit",
+            "task_id": 2,
+            "description": "Identify the 10 product names that have generated the highest total profit across all transactions.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "product_name"
+                    ],
+                    "columns_to_aggregate": [
+                        "profit"
+                    ],
+                    "calculation": "sum"
+                },
+                {
+                    "function": "get_top_or_bottom_N_entries",
+                    "sort_by_column_name": "profit",
+                    "order": "top",
+                    "number_of_entries": 10,
+                    "return_columns": [
+                        "product_name",
+                        "profit"
+                    ]
+                }
+            ],
+            "score": "high"
+        }]}

@@ -9,6 +9,7 @@ import base64
 
 from abc import ABC, abstractmethod
 from fastapi import UploadFile, BackgroundTasks
+from fastapi.exceptions import HTTPException
 
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 
@@ -26,29 +27,41 @@ import os
 
 import asyncio
 
-from app.crud import TaskRunTableOperation, PromptTableOperation
-from app.schemas import DataTasks, TaskStatus, RunInfoSchema
+from app.crud import TaskRunTableOperation, PromptTableOperation, get_current_time_utc
+from app.schemas import DataTasks, TaskStatus, RunInfoSchema, TaskProcessingRunType
 from app.data_transform_utils import (
     groupby_func, filter_func, get_proportion_func, get_column_statistics_func,
     get_top_or_bottom_n_entries_func, resample_data_func, apply_map_range_func, apply_map_func, 
     apply_date_op_func, apply_math_op_func, get_column_combination_func, 
     get_column_properties, col_transform_and_combination_parse_helper, 
     clean_dataset, handle_datetime_columns_serialization, 
-    determine_result_output_type
+    determine_result_output_type, get_granularity_map
 )
 from app.logger import logger
+from app.config import Config
 
 import zipfile
 from fpdf import FPDF
-from pathlib import Path
+
+import sentry_sdk
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request
+import time
+
+from functools import wraps
+from datetime import datetime
+
+from glob import glob
+
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 
 
-##### CONFIG #####
-N_ROWS_READ_UPLOAD_FILE = 100
-DATASET_SAVE_PATH = 'app/datasets'
-
-
-##################
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -66,14 +79,14 @@ class FileReader(ABC):
     def __init__(self, upload_file: UploadFile):
         self.file_content = upload_file.file.read()
         self.filename = upload_file.filename
-        self.clean_dataset_func = clean_dataset
         self.granularity_map = {}
         self.df = None
         
     def get_dataframe_dict(self):
         self._read_file()
         
-        self.df, self.granularity_map = self.clean_dataset_func(self.df)
+        self.df = clean_dataset(self.df)
+        self.granularity_map = get_granularity_map(self.df)
         
         if self._validate_dataset():
             sorted_unique_cols = sorted(list(set(self.df.columns)))
@@ -95,7 +108,7 @@ class FileReader(ABC):
     
 class CsvReader(FileReader):        
     def _read_file(self) -> pd.DataFrame:
-        self.df = pd.read_csv(io.BytesIO(self.file_content), encoding= 'unicode_escape')
+        self.df = pd.read_csv(io.BytesIO(self.file_content), encoding='unicode_escape')
         
 class DatasetProcessorForPtOnePrompt:
     def __init__(self, dataframe: pd.DataFrame, filename: str, prompt_template_file: str, granularity_data: dict = {}):
@@ -125,27 +138,11 @@ class DatasetProcessorForPtOnePrompt:
                    'dataset_column_unique_values': self._get_column_unique_values(), 
                    'temporal_granularity_map': self.granularity_data}
         return template.substitute(context)
-    
-    # def generate_time_series_context(self):
-    #     timeseries_template = '''
-    #     - This is a timeseries data and you may use the 'resample_data' function to accomplish an analysis task.
-    #     - Date column for downsampling: $date_col_timeseries
-    #     - Date granularity: $granularity_timeseries
-    #     '''
-        
-    #     no_timeseries_instruction = "This is not a timeseries data. DO NOT generate tasks that will require using the 'resample_data' function in their steps."
-        
-    #     if all([self.is_timeseries_data, self.date_col, self.granularity_timeseries]):
-    #         template = Template(timeseries_template)
-    #         template = template.substitute({'date_col_timeseries': self.date_col_timeseries, 
-    #                                         'granularity_timeseries': self.granularity_timeseries})
-    #         return template
-        
-    #     return no_timeseries_instruction
-    
+
+
 class DataAnalysisProcessor:
     def __init__(self, data_tasks: DataTasks, run_info: RunInfoSchema, task_run_table_ops: TaskRunTableOperation, 
-                 run_type: Literal['first_run_after_request', 'modified_tasks_execution', 'additional_analyses_request', 'modified_tasks_execution_with_new_dataset']):
+                 run_type: str):
         self.run_type = run_type
         
         parquet_file = run_info['parquet_file']
@@ -154,6 +151,7 @@ class DataAnalysisProcessor:
         self.send_result_to_email = run_info['send_result_to_email']
         self.email = run_info['email']
         self.dataset_filename = run_info['filename']
+        self.run_name = run_info['run_name']
         
         self.df: pd.DataFrame = pd.read_parquet(parquet_file)
         self.original_columns = self.df.columns.tolist()
@@ -185,13 +183,6 @@ class DataAnalysisProcessor:
             'map': apply_map_func,
             }
         
-        self.common_tasks_runtype_json_key = {
-            'first_run_after_request': 'original_common_tasks', 
-            'modified_tasks_execution': 'common_tasks_w_result', 
-            'modified_tasks_execution_with_new_dataset': 'common_tasks_w_result',
-            'additional_analyses_request': 'original_common_tasks'
-        }
-        
         # only accessed when testing to validate task result written to db
         self.col_info = None
         self.common_tasks_modified = None
@@ -199,80 +190,58 @@ class DataAnalysisProcessor:
         self.col_combination_tasks_status = None
 
     def process_all_tasks(self):       
-        if not self.common_tasks_only:
+        if self.run_type in (TaskProcessingRunType.first_run_after_request.value, TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value):
             self._process_column_transforms()
             self._process_column_combinations()
             
             # useful for when user run customized tasks on original dataset without running col transform or combination operations
-            if self.run_type == 'first_run_after_request': 
-                save_dataset_req_id(request_id=self.request_id, dataframe=self.df, save_type='original_dataset')
+            save_type_dct = {TaskProcessingRunType.first_run_after_request.value: 'original_dataset', 
+                             TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: 'new_dataset'}
             
-            elif self.run_type == 'modified_tasks_execution_with_new_dataset': # this may not be necessary because this dataset will not be accessed later
-                save_dataset_req_id(request_id=self.request_id, dataframe=self.df, save_type='new_dataset')
-                
-            
-            
-        self._process_common_tasks()
+            save_dataset_req_id(request_id=self.request_id, dataframe=self.df, save_type=save_type_dct[self.run_type])
         
-        if self.run_type == 'first_run_after_request':
+        if self.run_type == TaskProcessingRunType.first_run_after_request.value:
             self._process_columns_info()
             
             final_dataset_snippet = get_dataset_snippet(self.df)
             self.task_run_table_ops.update_final_dataset_snippet_sync(request_id=self.request_id, dataset_snippet=final_dataset_snippet)
+            
+        self._process_common_tasks()
+        self._update_task_result_in_db()
+        
+        if self.send_result_to_email:
+            self._generate_report_archive_and_send_to_email()
     
     def _process_columns_info(self):
-        df = self.df.copy()
+        df = self.df
+        added_cols = set(df.columns) - set(self.original_columns)
         
-        added_columns = list(set(df.columns) - set(self.original_columns))
-        numerical_columns = df.select_dtypes(include=[np.number])
-        date_cols = df.select_dtypes(include=[np.datetime64])
+        col_info_llm_resp = {c.name: c.model_dump() for c in self.data_tasks.columns}
         
-        columns_info = [col.model_dump() for col in self.data_tasks.columns]
-        col_combination = [col.model_dump() for col in self.data_tasks.common_column_combination]
-        col_transform = [col.model_dump() for col in self.data_tasks.common_column_cleaning_or_transformation]
-        
+        # inserting col info for derived columns
+        for col in self.data_tasks.common_column_combination:
+            col_info_llm_resp[col.name] = col_transform_and_combination_parse_helper(col.model_dump(), True)
+        for col in self.data_tasks.common_column_cleaning_or_transformation:
+            col_info_llm_resp[col.name] = col_transform_and_combination_parse_helper(col.model_dump(), False)
+
         col_info_lst = []
         
         for col in df.columns:
-            series = df[col]
+            col_info_dct = {
+                'name': col,
+                'source': 'original' if col not in added_cols else 'added',
+                'inferred_info_prompt_res': col_info_llm_resp.get(col, {})
+            }
             
-            col_info_dct = {'name': col}
-            col_info_dct['source'] = 'original' if col not in added_columns else 'added'
+            is_numeric_col = col in df.select_dtypes(include=[np.number])
+            is_datetime_col = col in df.select_dtypes(include=[np.datetime64])
+            props = get_column_properties(df[col], is_numeric=is_numeric_col, is_datetime=is_datetime_col)
             
-            # get llm resp col info if in original columns
-            if col not in added_columns: 
-                col_info_dct['inferred_info_prompt_res'] = next(dct for dct in columns_info if dct['name'] == col)
-            else:
-                col_combination_names = [col['name'] for col in col_combination]
-                col_transform_names = [col['name'] for col in col_transform]
-                
-                if col in col_combination_names:
-                    llm_resp_col_info = next(dct for dct in col_combination if dct['name'] == col)
-                    llm_resp_col_info = col_transform_and_combination_parse_helper(llm_resp_col_info, is_col_combination=True)
-                    col_info_dct['inferred_info_prompt_res'] = llm_resp_col_info
-                    
-                elif col in col_transform_names:
-                    llm_resp_col_info = next(dct for dct in col_transform if dct['name'] == col)
-                    llm_resp_col_info = col_transform_and_combination_parse_helper(llm_resp_col_info, is_col_combination=False)
-                    col_info_dct['inferred_info_prompt_res'] = llm_resp_col_info
-                    
-                else:
-                    col_info_dct['inferred_info_prompt_res'] = {}
-                    
-            
-            is_numeric_column = col in numerical_columns
-            is_datetime_column = col in date_cols
-            col_properties = get_column_properties(series, is_numeric_column, is_datetime_column)
-            
-            col_info_dct.update(col_properties)
-            
+            col_info_dct.update(props)
             col_info_lst.append(col_info_dct)
-            
-        col_info = {'columns_info': col_info_lst}
-        
-        self.task_run_table_ops.update_columns_info_sync(request_id=self.request_id, columns_info=json.dumps(col_info, cls=NpEncoder))
-        
-        self.col_info = col_info
+
+        self.col_info = {'columns_info': col_info_lst}
+        self.task_run_table_ops.update_columns_info_sync(request_id=self.request_id, columns_info=json.dumps(self.col_info, cls=NpEncoder))
     
     def _process_common_tasks(self):
         common_tasks = self.data_tasks.common_tasks
@@ -302,26 +271,14 @@ class DataAnalysisProcessor:
                 
                 logger.warning(f'some task from common_tasks failed: run_type {self.run_type}, request_id {self.request_id}, task_id {task.task_id}, errors ({"; ".join(error_steps)})')
             else:
-                # code block to handle result here (i.e. categorize how to store them: chart, table, or export file)
-                
-                # for each task id, get output type (chart, table, or export file). if chart include the encoded byte as string for that task id, else empty
-                # store this as a dict in class attribute accessible via a method from the get_common_tasks_result and get_customized_tasks_result endpoints
-                # the frontend will display chart and table if have both, just table, or nothing for export type output 
-                # table output is handled by the section below which is to store them in db
-                # 
-                # store these artifacts in the request_id folder, inside an 'artifacts' folder maybe. this is for embedding in the output pdf
-                
+                # this should be refactored into a function which processes all task results all at once
                 logger.debug(f'processing task {task.task_id}')
-                
                 
                 res_type = determine_result_output_type(tmp)
                 
-                self.result_save_handler(df=tmp, run_type=self.run_type, task_id=task.task_id, task_name=task.name, request_id=self.request_id, res_type=res_type)
-
-                DATASET_ROW_THRESHOLD_BEFORE_EXPORT = 20
-                DATASET_COLUMNS_THRESHOLD_BEFORE_EXPORT = 5
+                result_save_handler(df=tmp, run_type=self.run_type, task_id=task.task_id, task_name=task.name, request_id=self.request_id, res_type=res_type)
                 
-                if not (len(tmp) > DATASET_ROW_THRESHOLD_BEFORE_EXPORT or len(tmp.columns) > DATASET_COLUMNS_THRESHOLD_BEFORE_EXPORT):
+                if not (len(tmp) > Config.DATASET_ROW_THRESHOLD_BEFORE_EXPORT or len(tmp.columns) > Config.DATASET_COLUMNS_THRESHOLD_BEFORE_EXPORT):
                     tmp = handle_datetime_columns_serialization(tmp)
                     task_modified['status'] = 'successful'
                     task_modified['result'] = tmp.to_dict('list') # transform to dictionary for storing in db
@@ -331,38 +288,12 @@ class DataAnalysisProcessor:
                     
             common_tasks_modified.append(task_modified)
         
-        runtype_json_key = self.common_tasks_runtype_json_key[self.run_type]
         
-        if self.run_type == 'additional_analyses_request':
-            tasks_by_id = self.task_run_table_ops.get_task_by_id_sync(user_id=self.user_id, request_id=self.request_id)
-            original_common_tasks = tasks_by_id['original_common_tasks']
-            original_common_tasks = json.loads(original_common_tasks)['original_common_tasks'] # a list of common tasks
-            common_tasks_modified = original_common_tasks + common_tasks_modified # merge the original tasks and the new one
+        if self.run_type == TaskProcessingRunType.additional_analyses_request.value:
+            common_tasks_modified = self._get_original_tasks_and_merge(new_tasks=common_tasks_modified)
+
         
-        common_task_modified_w_json_key = {runtype_json_key: common_tasks_modified}
-        
-        if self.run_type == 'first_run_after_request': # update original_common_tasks (now with results) at first task run after llm response
-            self.task_run_table_ops.update_original_common_task_result_sync(request_id=self.request_id, 
-                                                                            original_common_tasks=json.dumps(common_task_modified_w_json_key))
-        elif self.run_type == 'modified_tasks_execution':
-            self.task_run_table_ops.update_task_result_sync(request_id=self.request_id, 
-                                                            common_tasks_w_result=json.dumps(common_task_modified_w_json_key))
-        elif self.run_type == 'modified_tasks_execution_with_new_dataset':
-            self.task_run_table_ops.update_task_result_sync(request_id=self.request_id, 
-                                                           common_tasks_w_result=json.dumps(common_task_modified_w_json_key))
-        elif self.run_type == 'additional_analyses_request':
-            self.task_run_table_ops.update_original_common_task_result_sync(request_id=self.request_id, 
-                                                                            original_common_tasks=json.dumps(common_task_modified_w_json_key))
-        
-        if self.send_result_to_email:
-            result_dct = get_result_dct(common_tasks_modified)
-            
-            zip_file_dir = generate_report_and_archive(request_id=self.request_id, run_type=self.run_type, result_dct=result_dct)
-            logger.debug('zip file created')
-            send_task_result_email(recipient=self.email, zip_file_dir=zip_file_dir, run_type=self.run_type, dataset_name=self.dataset_filename)
-            logger.debug('email sent')
-            
-        self.common_tasks_modified = common_task_modified_w_json_key
+        self.common_tasks_modified = common_tasks_modified
             
     def _process_col_transform_and_combination_helper(self, tasks, fn_map=None, is_col_combination_task= False):
         tmp = self.df.copy()
@@ -416,67 +347,46 @@ class DataAnalysisProcessor:
         
         self.col_combination_tasks_status = tasks_w_status
         
-    def get_process_result(self):
+    def _get_process_result(self):
         result_dct = {'col_combination_status': self.col_combination_tasks_status, 
                       'col_transform_status': self.col_transform_tasks_status, 
                       'common_tasks_result': self.common_tasks_modified, 
                       'col_info': self.col_info}
         return result_dct
     
-    @staticmethod
-    def result_save_handler(df, task_id, run_type, task_name, request_id, res_type=Literal['BAR_CHART', 'LINE_CHART', 'DISPLAY_TABLE', 'TABLE_EXPORT']):
+    def _update_task_result_in_db(self):
+        common_task_modified_dct = {'tasks': self.common_tasks_modified}
         
-        def get_bar_chart_cols(df):
-            x_axis_col = [i for i in df.columns if 'object' in str(df[i].dtype)][0]
-            y_axis_col = [i for i in df.columns if i != x_axis_col][0]
+        if self.run_type == TaskProcessingRunType.first_run_after_request.value:
+            self.task_run_table_ops.update_original_common_task_result_sync(request_id=self.request_id, 
+                                                                            tasks=json.dumps(common_task_modified_dct))
+        elif self.run_type == TaskProcessingRunType.modified_tasks_execution.value:
+            self.task_run_table_ops.update_task_result_sync(request_id=self.request_id, 
+                                                            tasks=json.dumps(common_task_modified_dct))
+        elif self.run_type == TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value:
+            self.task_run_table_ops.update_task_result_sync(request_id=self.request_id, 
+                                                        tasks=json.dumps(common_task_modified_dct))
+        elif self.run_type == TaskProcessingRunType.additional_analyses_request.value:
+            self.task_run_table_ops.update_original_common_task_result_sync(request_id=self.request_id, 
+                                                                            tasks=json.dumps(common_task_modified_dct))
             
-            return x_axis_col, y_axis_col
+    def _get_original_tasks_and_merge(self, new_tasks):
+        tasks_by_id = self.task_run_table_ops.get_task_by_id_sync(user_id=self.user_id, request_id=self.request_id)
+        original_common_tasks = tasks_by_id['original_common_tasks']
+        original_common_tasks = json.loads(original_common_tasks)['tasks'] # a list of common tasks
+        merged_tasks = original_common_tasks + new_tasks # merge the original tasks and the new one
         
-        def get_line_chart_cols(df):
-            x_axis_col = [i for i in df.columns if 'datetime' in str(df[i].dtype)][0]
-            y_axis_col = [i for i in df.columns if i != x_axis_col][0]
-            
-            return x_axis_col, y_axis_col
-        logger.debug(f'run type is {run_type}')
-        if run_type == 'first_run_after_request':
-            save_path = f'{DATASET_SAVE_PATH}/{request_id}/original_tasks/artifacts'
-        elif run_type in ('modified_tasks_execution', 'modified_tasks_execution_with_new_dataset'):
-            save_path = f'{DATASET_SAVE_PATH}/{request_id}/customized_tasks/artifacts'
-        elif run_type == 'additional_analyses_request':
-            save_path = f'{DATASET_SAVE_PATH}/{request_id}/original_tasks/artifacts'
-                
-        if not os.path.exists(save_path):
-            os.makedirs(save_path)
+        return merged_tasks
+    
+    def _generate_report_archive_and_send_to_email(self):
+        result_dct = get_result_dct(self.common_tasks_modified)
         
-        save_path_plot = f'{save_path}/{task_id}.png'
-        save_path_table_export = f'{save_path}/{task_id}.xlsx'
-        
-        if res_type == 'BAR_CHART':
-            x_col, y_col = get_bar_chart_cols(df)
-            fig, ax = plt.subplots(figsize=(12, 6))
-            sns.barplot(df, x=x_col, y=y_col, ax=ax)
-            plt.xticks(rotation=45, ha='right')
-            plt.title(task_name)
-            fig.tight_layout()
-            fig.savefig(save_path_plot)
-            plt.close(fig)
-            
-        elif res_type == 'LINE_CHART':
-            x_col, y_col = get_line_chart_cols(df)
-            fig, ax = plt.subplots(figsize=(12, 6))
-            sns.lineplot(df, x=x_col, y=y_col, ax=ax)
-            plt.xticks(rotation=45, ha='right')
-            plt.title(task_name)
-            fig.tight_layout()
-            fig.savefig(save_path_plot)
-            plt.close(fig)
-            
-        elif res_type == 'DISPLAY_TABLE':
-            return
-        
-        elif res_type == 'TABLE_EXPORT':
-            df.to_excel(save_path_table_export)
-  
+        zip_file_dir = generate_report_and_archive(request_id=self.request_id, run_type=self.run_type, result_dct=result_dct, run_name=self.run_name)
+        logger.debug('zip file created')
+        send_task_result_email(recipient=self.email, zip_file_dir=zip_file_dir, run_type=self.run_type, dataset_name=self.dataset_filename, run_name=self.run_name)
+        logger.debug('email sent')
+    
+
 
 def get_dataset_snippet(df: pd.DataFrame):
     return df.iloc[:5].to_csv(index=False)
@@ -493,10 +403,14 @@ def insert_prompt_context(prompt_file, context):
     
     return template.substitute(context)
 
-@logger.catch
+
+
+@logger.catch(reraise=True)
 def get_prompt_result(prompt, model):
-    key = 'AIzaSyB0Kbhw7DpGlA_tAolL4tGdRajI9k4F_s4'
-    url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
+    key = Config.LLM_API_KEY
+    url = Config.LLM_ENDPOINT
+    
+    url = url.format(model)
     
     payload_data = {
         "contents": [{"parts": [{"text": prompt}]}]
@@ -532,11 +446,14 @@ def get_task_plot_results(request_id, run_type):
         
         return encoded
     
-    save_dir_dct = {'first_run_after_request': 'original_tasks', 'modified_tasks_execution': 'customized_tasks', 
-                    'additional_analyses_request': 'original_tasks', 'modified_tasks_execution_with_new_dataset': 'customized_tasks'}
+    save_dir_dct = {TaskProcessingRunType.first_run_after_request.value: 'original_tasks', 
+                    TaskProcessingRunType.modified_tasks_execution.value: 'customized_tasks', 
+                    TaskProcessingRunType.additional_analyses_request.value: 'original_tasks', 
+                    TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: 'customized_tasks'}
+    
     save_dir = save_dir_dct[run_type]
     
-    path = f'{DATASET_SAVE_PATH}/{request_id}/{save_dir}/artifacts'
+    path = f'{Config.DATASET_SAVE_PATH}/{request_id}/{save_dir}/artifacts'
     plot_files = [i for i in os.listdir(path) if i.endswith('.png')]
     plot_task_ids = [i.split('.')[0] for i in plot_files]
     
@@ -578,15 +495,99 @@ def cleanup_agg_col_names(resp_pt_2, resp_pt_1):
 async def is_task_invalid_or_still_processing(request_id, user_id, prompt_table_ops):
     req_status = await prompt_table_ops.get_request_status(request_id=request_id, user_id=user_id)
     exclude_status = (TaskStatus.waiting_for_initial_request_prompt.value, TaskStatus.initial_request_prompt_received.value, 
-                      TaskStatus.doing_initial_tasks_run.value, TaskStatus.failed_because_blacklisted_dataset)
+                      TaskStatus.doing_initial_tasks_run.value, TaskStatus.failed_because_blacklisted_dataset, 
+                      TaskStatus.deleted_because_not_accessed_recently)
     
     if not req_status or (req_status and req_status['status'] in exclude_status):
         return True
     return False
 
+def check_if_task_is_valid(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        
+        request_id = kwargs.get('request_id')
+        
+        if not request_id:
+            try:
+                data_key = [i for i in kwargs.keys() if i.endswith('_data')][0]
+                request_id = kwargs.get(data_key).request_id
+            except (AttributeError, IndexError):
+                return await func(*args, **kwargs)
+            
+        current_user = kwargs.get('current_user')
+        user_id = current_user.user_id
+        
+        prompt_table_ops = kwargs.get('prompt_table_ops')
+        
+        if not is_task_invalid_or_still_processing(request_id, user_id, prompt_table_ops):
+            raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
+                
+        
+        return await func(*args, **kwargs)
+    
+    return wrapper
+
+
+
 def get_background_tasks(background_tasks: BackgroundTasks):
     return background_tasks
 
+def init_sentry():
+    sentry_sdk.init(
+        dsn=Config.SENTRY_DSN,
+        send_default_pii=True,
+        enable_logs=True
+    )
+
+class LogRequestMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.perf_counter()
+        
+        response = await call_next(request)
+        
+        end_time = time.perf_counter()
+        process_time = end_time - start_time
+        process_time_ms = round(process_time * 1000, 2)
+        
+        if response.status_code == 200:
+            logger.debug(f"{request.method} {request.url} | Completed with status {response.status_code} in {process_time_ms} ms")
+        elif response.status_code >= 400:
+            logger.warning(f"CLIENT ERROR 4XX | {request.method} {request.url} | Headers: {dict(request.headers)} | Completed with status {response.status_code} in {process_time_ms} ms")
+        elif response.status_code >= 500:
+            logger.error(f"SERVER ERROR 5XX | {request.method} {request.url} | Headers: {dict(request.headers)} | Completed with status {response.status_code} in {process_time_ms} ms")
+        
+        slow_routes_exclude = ['/upload_dataset']
+        if process_time_ms > Config.THRES_SLOW_RESPONSE_TIME_MS and Config.WARN_FOR_SLOW_RESPONSE_TIME and not any(i in str(request.url) for i in slow_routes_exclude):
+            logger.warning(f'SLOW RESPONSE TIME | {request.method} {request.url} | Headers: {dict(request.headers)} | Completed with status {response.status_code} in {process_time_ms} ms')
+        
+        return response
+    
+
+
+def update_last_accessed_at_when_called(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        request_id = kwargs.get('request_id')
+        redis_client = kwargs.get('redis_client')
+        
+        if not request_id or not redis_client:
+            logger.warning(f'update_last_accessed_at decorator called on function "{func.__name__}" with no request_id or redis_client parameter')
+            return await func(*args, **kwargs)
+        
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        hashtable_last_accessed = Config.REDIS_LAST_ACCESSED_HASHTABLE_NAME
+        cooldown_key = f'{request_id}:last_write:{today}'
+        
+        logger.debug(f'cooldown key {cooldown_key}')
+        
+        if redis_client.set(cooldown_key, 'on_cooldown', ex=3600*24*2, nx=True):
+            redis_client.hset(hashtable_last_accessed, request_id, today)
+            
+        return await func(*args, **kwargs)
+    
+    return wrapper
 
 def split_and_validate_new_prompt(prompt):
     
@@ -613,7 +614,7 @@ def get_dataset_id(df: pd.DataFrame):
 
 def save_dataset_req_id(request_id: str, dataframe: pd.DataFrame, 
                         save_type: Literal['original_dataset', 'new_dataset']):
-    save_path = f'{DATASET_SAVE_PATH}/{request_id}'
+    save_path = f'{Config.DATASET_SAVE_PATH}/{request_id}'
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
@@ -638,7 +639,7 @@ class ReportPDF(FPDF):
 
     def chapter_title(self, task_id):
         self.set_font('helvetica', 'B', 12)
-        self.set_fill_color(200, 220, 255)  # Light blue background
+        self.set_fill_color(200, 220, 255)
         self.cell(0, 10, f'Task Result: {task_id}', new_x="LMARGIN", new_y="NEXT", fill=True)
         self.ln(5)
 
@@ -647,24 +648,31 @@ class ReportPDF(FPDF):
         self.multi_cell(0, 5, text)
         self.ln()
 
-def generate_report_and_archive(request_id, result_dct, run_type):
-
-    base_dir = Path(f'{DATASET_SAVE_PATH}/{request_id}')
-    save_folder_dct = {'first_run_after_request': 'original_tasks', 'modified_tasks_execution': 'customized_tasks', 
-                       'additional_analyses_request': 'original_tasks', 'modified_tasks_execution_with_new_dataset': 'customized_tasks'}
+def generate_report_and_archive(request_id, result_dct, run_type, run_name):
+            
+    base_dir = f'{Config.DATASET_SAVE_PATH}/{request_id}'
+    save_folder_dct = {TaskProcessingRunType.first_run_after_request.value: 'original_tasks', 
+                       TaskProcessingRunType.modified_tasks_execution.value: 'customized_tasks', 
+                       TaskProcessingRunType.additional_analyses_request.value: 'original_tasks', 
+                       TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: 'customized_tasks'}
     save_folder = save_folder_dct[run_type]
-    artifacts_dir = base_dir / save_folder / 'artifacts'
+    artifacts_dir = f'{base_dir}/{save_folder}/artifacts'
     
-    output_filename_dct = {'first_run_after_request': 'original_tasks', 'modified_tasks_execution': 'customized_tasks', 
-                      'additional_analyses_request': 'original_tasks', 'modified_tasks_execution_with_new_dataset': 'customized_tasks'}
+    output_filename_dct = {TaskProcessingRunType.first_run_after_request.value: 'original_tasks', 
+                           TaskProcessingRunType.modified_tasks_execution.value: 'customized_tasks', 
+                           TaskProcessingRunType.additional_analyses_request.value: 'original_tasks', 
+                           TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: 'customized_tasks'}
     output_filename = output_filename_dct[run_type]
     
-    output_pdf_path = base_dir / f'{output_filename}_report.pdf'
-    output_zip_path = base_dir / f'{output_filename}_{request_id}.zip'
+    today_date = get_current_time_utc().strftime('%Y-%m-%d %I:%M:%S %p')
+    output_pdf_path = f'{base_dir}/{run_name}_{output_filename}_report.pdf'
+    output_zip_path = f'{base_dir}/{run_name}_{output_filename}_{today_date}.zip'
     
     task_ids = set(result_dct.keys())
         
     sorted_task_ids = sorted(list(task_ids))
+    
+
 
     pdf = ReportPDF()
     pdf.add_page()
@@ -672,17 +680,28 @@ def generate_report_and_archive(request_id, result_dct, run_type):
     for task in sorted_task_ids:
         pdf.chapter_title(task)
 
-        plot_path = artifacts_dir / f"{task}.png"
-        if plot_path.exists():
+        plot_path = f"{artifacts_dir}/{task}.png"
+        if os.path.exists(plot_path):
             try:
                 pdf.image(str(plot_path), w=pdf.epw) 
                 pdf.ln(5)
             except Exception as e:
-                print(f"Warning: Could not load image for {task}: {e}")
+                logger.debug(f"would not load image for {task}: {e}")
 
         if task in result_dct:
-            df = pd.DataFrame(result_dct[task])
+            CHAR_THRESH_TASK_DESC = 200
+            task_desc = result_dct[task]['description']
+            
+            if len(task_desc) > CHAR_THRESH_TASK_DESC:
+                task_desc = task_desc[:CHAR_THRESH_TASK_DESC] + '...'
+                
+            pdf.set_font('helvetica', '', 6)
+            pdf.cell(0, 8, f"Task description: {task_desc}")
+            pdf.ln(10)
+            
+            df = pd.DataFrame(result_dct[task]['result'])
             if not df.empty:
+                
                 pdf.set_font('helvetica', 'B', 10)
                 pdf.cell(0, 8, "Data Summary:", new_x="LMARGIN", new_y="NEXT")
                 pdf.set_font('helvetica', '', 9)
@@ -697,9 +716,13 @@ def generate_report_and_archive(request_id, result_dct, run_type):
                         for item in data_row:
                             row.cell(str(item).encode('utf-8').decode('latin-1'))
                 pdf.ln(10)
+            else:
+                pdf.set_font('helvetica', '', 7)
+                pdf.cell(0, 8, f"This task has an empty result.")
+                pdf.ln(10)
 
-        excel_path = artifacts_dir / f"{task}.xlsx"
-        if excel_path.exists():
+        excel_path = f"{artifacts_dir}/{task}.xlsx"
+        if os.path.exists(excel_path):
             pdf.ln(5)
             pdf.set_text_color(200, 50, 50)
             pdf.set_font('helvetica', 'I', 10)
@@ -716,19 +739,88 @@ def generate_report_and_archive(request_id, result_dct, run_type):
     pdf.output(output_pdf_path)
 
     with zipfile.ZipFile(output_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        zipf.write(output_pdf_path, arcname=output_pdf_path.name)
+        zipf.write(output_pdf_path, arcname=os.path.basename(output_pdf_path))
         
-        for file in artifacts_dir.glob("*.xlsx"):
-            zipf.write(file, arcname=file.name)
-
-    print(f"Process Complete. Archive created: {output_zip_path}")
-    return str(output_zip_path)
-        
+        for file in glob(f'{artifacts_dir}/*.xlsx'):
+            filename = os.path.basename(file)
+            filename_without_ext = filename.rstrip('.xlsx')
+            
+            if filename_without_ext.isnumeric() and int(filename_without_ext) in result_dct:
+                zipf.write(file, arcname=filename)
     
-EMAIL_USERNAME = 'daaotpsender@gmail.com'
-EMAIL_PASSWORD = 'rfww zlil bhbl emjz'
-EMAIL_SERVER = 'smtp.gmail.com'
+    return str(output_zip_path)
 
+def remove_file_w_extension(dir_, extension):
+    for file in glob(f'{dir_}/*.{extension}'):
+        os.remove(file)
+
+def result_save_handler(df, task_id, run_type, task_name, request_id, res_type=Literal['BAR_CHART', 'LINE_CHART', 'DISPLAY_TABLE', 'TABLE_EXPORT']):
+    # this function gets the appropriate column names if the res_type is chart, create the chart and save it
+    # if output is too big then it'll save the excel
+    
+    
+    def get_bar_chart_cols(df):
+        x_axis_col = [i for i in df.columns if 'object' in str(df[i].dtype)][0]
+        y_axis_col = [i for i in df.columns if i != x_axis_col][0]
+        
+        return x_axis_col, y_axis_col
+    
+    def get_line_chart_cols(df):
+        x_axis_col = [i for i in df.columns if 'datetime' in str(df[i].dtype)][0]
+        y_axis_col = [i for i in df.columns if i != x_axis_col][0]
+        
+        return x_axis_col, y_axis_col
+    logger.debug(f'run type is {run_type}')
+    
+    # refactor this into dictionary dispatch
+    save_path_dct = {
+                     TaskProcessingRunType.first_run_after_request.value: f'{Config.DATASET_SAVE_PATH}/{request_id}/original_tasks/artifacts',
+                     TaskProcessingRunType.additional_analyses_request.value: f'{Config.DATASET_SAVE_PATH}/{request_id}/original_tasks/artifacts', 
+                     TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: f'{Config.DATASET_SAVE_PATH}/{request_id}/customized_tasks/artifacts', 
+                     TaskProcessingRunType.modified_tasks_execution.value: f'{Config.DATASET_SAVE_PATH}/{request_id}/customized_tasks/artifacts', 
+                     }
+    
+    save_path = save_path_dct[run_type]
+    
+    # this line handles the artifacts dir creation      
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    
+    save_path_plot = f'{save_path}/{task_id}.png'
+    save_path_table_export = f'{save_path}/{task_id}.xlsx'
+    
+    if os.path.exists(save_path_plot):
+        os.remove(save_path_plot)
+        
+    if os.path.exists(save_path_table_export):
+        os.remove(save_path_table_export)
+    
+    # refactor these two into their own functions
+    if res_type == 'BAR_CHART':
+        x_col, y_col = get_bar_chart_cols(df)
+        fig, ax = plt.subplots(figsize=(12, 6))
+        sns.barplot(df, x=x_col, y=y_col, ax=ax)
+        plt.xticks(rotation=45, ha='right')
+        plt.title(task_name)
+        fig.tight_layout()
+        fig.savefig(save_path_plot)
+        plt.close(fig)
+        
+    elif res_type == 'LINE_CHART':
+        x_col, y_col = get_line_chart_cols(df)
+        fig, ax = plt.subplots(figsize=(12, 6))
+        sns.lineplot(df, x=x_col, y=y_col, ax=ax)
+        plt.xticks(rotation=45, ha='right')
+        plt.title(task_name)
+        fig.tight_layout()
+        fig.savefig(save_path_plot)
+        plt.close(fig)
+        
+    elif res_type == 'DISPLAY_TABLE':
+        return
+    
+    elif res_type == 'TABLE_EXPORT':
+        df.to_excel(save_path_table_export, index=False)
 
 async def send_email(subject: str, recipients: list, body: str, attachment_path: str = None):
     attachments = []
@@ -745,11 +837,11 @@ async def send_email(subject: str, recipients: list, body: str, attachment_path:
     )
 
     conf = ConnectionConfig(
-        MAIL_USERNAME=EMAIL_USERNAME,
-        MAIL_PASSWORD=EMAIL_PASSWORD,
-        MAIL_FROM=EMAIL_USERNAME,
+        MAIL_USERNAME=Config.EMAIL_USERNAME,
+        MAIL_PASSWORD=Config.EMAIL_PASSWORD,
+        MAIL_FROM=Config.EMAIL_USERNAME,
         MAIL_PORT=587,
-        MAIL_SERVER=EMAIL_SERVER,
+        MAIL_SERVER=Config.EMAIL_SERVER,
         MAIL_STARTTLS=True,
         MAIL_SSL_TLS=False,
         USE_CREDENTIALS=True,
@@ -759,9 +851,38 @@ async def send_email(subject: str, recipients: list, body: str, attachment_path:
     fm = FastMail(conf)
     await fm.send_message(message)
     
-def send_task_result_email(recipient, zip_file_dir, run_type, dataset_name):
-    subject = f'Output for your analysis tasks. (Dataset name: {dataset_name})'
-    body = f'Here is the result of your "{run_type}" analysis tasks'
+
+
+def send_email_with_attachment_sync(receiver, subject, body, attachment_path):
+    msg = MIMEMultipart()
+    msg['From'] = Config.EMAIL_USERNAME
+    msg['To'] = receiver
+    msg['Subject'] = subject
+
+
+    msg.attach(MIMEText(body, 'plain'))
+
+    with open(attachment_path, "rb") as attachment:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(attachment.read())
+
+    encoders.encode_base64(part)
+
+    filename = os.path.basename(attachment_path)
+    part.add_header("Content-Disposition",f"attachment; filename={filename}")
+
+
+    msg.attach(part)
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+        server.login(Config.EMAIL_USERNAME, Config.EMAIL_PASSWORD)
+        server.send_message(msg)
+    # except smtplib.SMTPException as e:
+    
+def send_task_result_email(recipient, zip_file_dir, run_type, dataset_name, run_name):
+    subject = f'Output for your analysis tasks. (Run name: {run_name})'
+    body = f'Here is the result of your "{run_type}" analysis tasks using the dataset {dataset_name}.'
     
     asyncio.run(send_email(subject=subject, recipients=[recipient], body=body, attachment_path=zip_file_dir))
     
@@ -770,6 +891,51 @@ def get_result_dct(common_tasks_dct):
     res = {}
     for t in common_tasks_dct:
         task_id = t['task_id']
-        res[task_id] = t['result']
+        task_dct = {}
+        task_dct['result'] = t['result']
+        task_dct['description'] = t['description']
+        res[task_id] = task_dct
 
     return res
+
+def resp_pt1_loader(prompt, model):
+    resp_pt_1 = get_prompt_result(prompt, model)     
+    resp_pt_1 = process_llm_api_response(resp_pt_1)
+    
+    return resp_pt_1
+
+def mock_resp_pt1_loader(mock_resp_file):
+    logger.info('part 2 prompt mocked')
+    with open(mock_resp_file, 'r') as f:
+        resp_pt_1 = json.load(f)
+        
+    return resp_pt_1
+def resp_pt2_loader(prompt, model):
+    resp_pt_2 = get_prompt_result(prompt, model)     
+    resp_pt_2 = process_llm_api_response(resp_pt_2)
+    
+    return resp_pt_2
+
+def mock_resp_pt2_loader(mock_resp_file):
+    logger.info('part 2 prompt mocked')
+    with open(mock_resp_file, 'r') as f:
+        resp_pt_2 = json.load(f)
+    
+    return resp_pt_2
+
+def write_prompt_and_res(prompt, res, part, dir_): 
+    with open(f'{dir_}/prompt_pt{part}.txt', 'w', encoding='utf-8') as f:
+        f.write(prompt)
+    with open(f'{dir_}/res_pt{part}.json', 'w', encoding='utf-8') as f:
+        json.dump(res, f, indent=4)
+    
+def addt_req_resp_loader(prompt, model):
+    resp = get_prompt_result(prompt, model)     
+    resp = process_llm_api_response(resp)
+    
+    return resp    
+
+def mock_addt_req_resp(mock_resp_file):
+    with open(mock_resp_file, 'r') as f:
+        resp = json.load(f)
+    return resp

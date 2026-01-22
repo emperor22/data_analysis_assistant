@@ -22,48 +22,7 @@ from copy import deepcopy
 # URL = 'https://nginx/api'
 URL = 'http://localhost:8000'
 
-DEFAULT_SEND_EMAIL = True
-
 DEFAULT_VERSION_CUSTOMIZED_TASKS = 1
-
-# item_list = ['selected_tasks_to_modify', 'imported', 'tasks', 'tasks_plots', 'modified_tasks']
-
-# def local_storage_manager():
-#     return LocalStorage()
-
-
-
-# def set_item_ls(item, key, key_st, local_storage):
-#     local_storage.setItem(key, item, key_st)
-    
-# def get_item_ls(key, local_storage):
-#     return deepcopy(local_storage.getItem(key))
-
-# def delete_item_ls(key, key_st, local_storage):
-#     local_storage.deleteItem(key, key_st)
-
-# def item_exists_ls(key, local_storage):
-#     return local_storage.getItem(key) is not None
-    
-# def delete_request_id_elem_in_item_ls(request_id, item_to_modify: Literal[tuple(item_list)], key_st, local_storage): # type: ignore
-#     dct = deepcopy(local_storage.getItem(item_to_modify))
-#     del dct[request_id]
-#     local_storage.setItem(item_to_modify, dct, key_st)
-    
-# def get_request_id_elem_in_item_ls(request_id, item: Literal[tuple(item_list)], local_storage): # type: ignore
-#     dct = deepcopy(local_storage.getItem(item))
-#     return dct[request_id]
-    
-# def request_id_exists_in_item_ls(request_id, item_to_check: Literal[tuple(item_list)], local_storage): # type: ignore
-#     dct = local_storage.getItem(item_to_check)
-    
-#     return request_id in dct
-
-# def set_request_id_elem_in_item_ls(request_id, elem_set,
-#                                   item_to_modify: Literal[tuple(item_list)], key_st, local_storage): # type: ignore
-#     dct = deepcopy(local_storage.getItem(item_to_modify))
-#     dct[request_id] = elem_set
-#     local_storage.setItem(item_to_modify, dct, key_st)
 
 def register_user(username, first_name, last_name, email):
     body = {'username': username, 'first_name': first_name, 'last_name': last_name, 'email': email}
@@ -161,7 +120,10 @@ def include_auth_header(func):
                 return None
 
             if res.status_code == 200:
-                return res.json()
+                try:
+                    return res.json()
+                except requests.exceptions.JSONDecodeError:
+                    return res
             
             raise Exception(f'request returned an error: status code: {res.status_code}')
                 
@@ -283,7 +245,7 @@ def get_dataset_snippet_by_id(task_id, headers=None):
 
 
 @include_auth_header
-def send_tasks_to_process(data_tasks, task_id, send_result_to_email=DEFAULT_SEND_EMAIL, headers=None):
+def send_tasks_to_process(data_tasks, task_id, send_result_to_email=False, headers=None):
     url = f'{URL}/execute_analyses'
     
     data_tasks['request_id'] = task_id
@@ -294,7 +256,7 @@ def send_tasks_to_process(data_tasks, task_id, send_result_to_email=DEFAULT_SEND
     return res
 
 @include_auth_header
-def send_tasks_to_process_w_new_dataset(uploaded_file, data_tasks, task_id, send_result_to_email=DEFAULT_SEND_EMAIL, headers=None):
+def send_tasks_to_process_w_new_dataset(uploaded_file, data_tasks, task_id, send_result_to_email=False, headers=None):
     url = f'{URL}/execute_analyses_with_new_dataset'
     
     data_tasks['request_id'] = task_id
@@ -310,13 +272,22 @@ def send_tasks_to_process_w_new_dataset(uploaded_file, data_tasks, task_id, send
     return res
 
 @include_auth_header
-def make_analysis_request(uploaded_file, model, task_count, send_result_to_email=DEFAULT_SEND_EMAIL, headers=None):
+def make_analysis_request(name, uploaded_file, model, task_count, send_result_to_email, headers=None):
     url = f'{URL}/upload_dataset'
     file = {'file': (uploaded_file.name, uploaded_file.getvalue())}
 
-    data = {'model': model, 'analysis_task_count': str(task_count), 'send_result_to_email': send_result_to_email}
+    params = {'run_name': name, 'model': model, 'analysis_task_count': str(task_count), 'send_result_to_email': send_result_to_email}
+    data = {'upload_dataset_data': json.dumps(params)}
 
     res = requests.post(url, verify=False, files=file, headers=headers, data=data)
+    
+    return res
+
+@include_auth_header
+def download_excel_result(request_id, task_id, headers=None):
+    url = f'{URL}/download_excel_result/{request_id}/{task_id}'
+    
+    res = requests.get(url, headers=headers)
     
     return res
 
@@ -565,10 +536,10 @@ PARAMS_MAP = {
     },
     
     'resample_data': {
-        'template': 'Change data frequency to frequency $frequency, group by $columns_to_group_by, and calculate $calculation of column(s) $columns_to_aggregate', 
+        'template': 'Change data frequency to frequency $frequency, group by $static_group_cols, and calculate $calculation of column(s) $columns_to_aggregate', 
         'date_column': {'alias': 'Date column', 'type': 'selectbox' }, 
         'frequency': {'alias': 'Resample frequency', 'type': 'selectbox', 'options': ["day", "week", "month", "year", "quarter"]}, 
-        'columns_to_group_by': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
+        'static_group_cols': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
         'columns_to_aggregate': {'alias': 'Column(s) to aggregate', 'type': 'multiselect'}, 
         'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['sum', 'mean', 'median', 'min', 'max', 'first', 'last']}
     }
@@ -580,7 +551,7 @@ DEFAULT_PARAMS = {
     'get_top_or_bottom_N_entries': ['number_of_entries', 'sort_by_column_name', 'order'],
     'get_proportion': ['column_name', 'values'],
     'get_column_statistics': ['column_name'], 
-    'resample_data': ['frequency', 'columns_to_group_by', 'columns_to_aggregate']
+    'resample_data': ['frequency', 'static_group_cols', 'columns_to_aggregate']
 }
 
 

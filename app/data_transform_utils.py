@@ -4,11 +4,9 @@ import numpy as np
 import json
 
 from app.logger import logger
+from app.config import Config
 
-MAX_BAR_ROWS = 20
-MIN_LINE_POINTS = 5
-MAX_VISUAL_ROWS = 50
-MAX_VISUAL_COLS = 10 
+
 
 
 def determine_main_date_col(df):
@@ -79,9 +77,6 @@ def handle_datetime_columns_serialization(df: pd.DataFrame):
 @logger.catch
 def clean_dataset(df):
     df = df.copy()
-    CONV_SUCCESS_RATE = 0.5
-    
-    granularity_map = {}
 
     # for column names, strip, make lowercase, replace space and dash with _, and remove non-alphanum characters
     df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_', regex=False).str.replace('-', '_') \
@@ -101,11 +96,8 @@ def clean_dataset(df):
                 temp_series_dt_nonull = temp_series_dt[temp_series_dt.index.isin(temp_series_nonull_idx)]
                 datetime_success_rate = 1 - (temp_series_dt_nonull.isna().sum() / len(temp_series_dt_nonull))
                 
-                if datetime_success_rate > CONV_SUCCESS_RATE:
+                if datetime_success_rate > Config.DATATYPE_CONV_SUCCESS_RATE_CLEAN_DATASET:
                     df[col] = temp_series_dt
-                    
-                    granularity_map[col] = infer_granularity(temp_series_dt) # adding this col granularity to the dict
-                    
                     continue
 
             # check if numeric
@@ -114,7 +106,7 @@ def clean_dataset(df):
 
             numeric_success_rate = 1 - (temp_series_numeric_nonull.isna().sum() / len(temp_series_numeric_nonull))
             
-            if numeric_success_rate > CONV_SUCCESS_RATE: # more than x % of col values are successfully converted to numeric, so keep it 
+            if numeric_success_rate > Config.DATATYPE_CONV_SUCCESS_RATE_CLEAN_DATASET: # more than x % of col values are successfully converted to numeric, so keep it 
                 df[col] = temp_series_numeric
             else: # col is probably a string column
                 null_string_replace = ['', 'nan', None, 'null', 'n/a', 'na', 'none']
@@ -122,7 +114,17 @@ def clean_dataset(df):
         else:
             continue # column is already numeric type and doesnt require cleaning
         
-    return df, granularity_map
+    return df
+
+def get_granularity_map(df):
+    granularity_map = {}
+    dt_cols = df.select_dtypes(include=[np.datetime64])
+    
+    for col in dt_cols:
+        granularity_map[col] = infer_granularity(df[col]) 
+        
+    return granularity_map
+    
 
 def validate_columns(cols_to_check: str | list, column_list):
     if not cols_to_check:
@@ -248,9 +250,9 @@ def get_column_statistics_func(df: pd.DataFrame, column_name: str | list, calcul
     return df[column_name].agg(calculation).reset_index()
 
 @logger.catch(reraise=True)
-def resample_data_func(df: pd.DataFrame, columns_to_group_by: list, columns_to_aggregate: list,  frequency: str, date_column: str, 
+def resample_data_func(df: pd.DataFrame, columns_to_aggregate: list, static_group_cols: list,  frequency: str, date_column: str, 
                        calculation: str):
-    for cols_to_check in [columns_to_group_by, columns_to_aggregate, date_column]:
+    for cols_to_check in [columns_to_aggregate, static_group_cols, date_column]:
         validate_columns(cols_to_check, df.columns.tolist())
     
     period_map = {'day': 'D', 'week': 'W', 'month': 'MS', 'year': 'YS', 'quarter': 'QS'}
@@ -264,8 +266,8 @@ def resample_data_func(df: pd.DataFrame, columns_to_group_by: list, columns_to_a
     if isinstance(date_column, list):
         date_column = date_column[0]
     
-    if len(columns_to_group_by) > 0:
-        resampled = df.groupby(columns_to_group_by).resample(frequency, on=date_column)[columns_to_aggregate].apply(calculation).reset_index()
+    if len(static_group_cols) > 0:
+        resampled = df.groupby(static_group_cols).resample(frequency, on=date_column)[columns_to_aggregate].apply(calculation).reset_index()
     else:
         resampled = df.resample(frequency, on=date_column)[columns_to_aggregate].apply(calculation).reset_index()
     return resampled
@@ -459,9 +461,10 @@ def col_transform_and_combination_parse_helper(dct, is_col_combination):
         
     return {'operation': op_type, 'description': description, 'formula': formula}
 
+# refactor: improve this function for when there is more than 1 object column
 def determine_result_output_type(df: pd.DataFrame):
 
-    if df.shape[0] > MAX_VISUAL_ROWS or df.shape[1] > MAX_VISUAL_COLS:
+    if df.shape[0] > Config.MAX_VISUAL_ROWS or df.shape[1] > Config.MAX_VISUAL_COLS:
         return 'TABLE_EXPORT'
 
     if df.shape[1] < 2:
@@ -478,11 +481,11 @@ def determine_result_output_type(df: pd.DataFrame):
     is_categorical_1 = ('object' in col_1_dtype or 'category' in col_1_dtype)
     is_categorical_2 = ('object' in col_2_dtype or 'category' in col_2_dtype)
 
-    if df.shape[0] >= MIN_LINE_POINTS:
+    if df.shape[0] >= Config.MIN_LINE_POINTS:
         if (is_datetime_1 and is_numeric_2) or (is_datetime_2 and is_numeric_1):
             return 'LINE_CHART'
 
-    if df.shape[0] <= MAX_BAR_ROWS:
+    if df.shape[0] <= Config.MAX_BAR_ROWS:
         if (is_categorical_1 and is_numeric_2) or (is_categorical_2 and is_numeric_1):
             return 'BAR_CHART'
 

@@ -5,10 +5,10 @@ from typing import Optional
 from typing_extensions import NotRequired
 from enum import Enum
 from app.logger import logger
+from app.config import Config
+from typing import TypedDict
 
 
-MIN_VALID_COMMON_TASKS_FIRST_RUN = 5
-MIN_VALID_COMMON_TASKS_SUBSEQUENT_RUNS = 1
 
 class TaskStatus(Enum):
     waiting_for_initial_request_prompt = 'GETTING INITIAL REQUEST PROMPT RESULT'
@@ -30,10 +30,19 @@ class TaskStatus(Enum):
     # failed attempts
     failed_because_blacklisted_dataset = 'TASK FAILED BECAUSE DATASET IS BLACKLISTED'
     
-from typing import TypedDict
+    deleted_because_not_accessed_recently = 'TASK DELETED BECAUSE IT IS NOT ACCESSED FOR SOME TIME'
+    
+class TaskProcessingRunType(Enum):
+    first_run_after_request = 'first_run_after_request'
+    modified_tasks_execution = 'modified_tasks_execution'
+    additional_analyses_request = 'additional_analyses_request'
+    modified_tasks_execution_with_new_dataset = 'modified_tasks_execution_with_new_dataset'
+    
+
 
 RunInfoSchema = TypedDict('RunInfoSchema', {'request_id': str, 'user_id': str, 'parquet_file': str, 
-                                            'filename': str, 'send_result_to_email': str, 'email': str})
+                                            'filename': str, 'send_result_to_email': str, 'email': str, 
+                                            'run_name': str})
 
 
     
@@ -47,6 +56,35 @@ class UserRegisterSchema(BaseModel):
     email: str
     first_name: str
     last_name: str
+
+
+class UploadDatasetSchema(BaseModel):
+    run_name: str
+    model: Literal[tuple(Config.LLM_MODEL_LIST_GOOGLE)]  # type: ignore
+    analysis_task_count: int = Field(lt=Config.MAX_TASK_COUNT + 1)
+    send_result_to_email: bool
+    
+class UserCustomizedTasksSchema(BaseModel):
+    request_id: str
+    slot: int = Literal[1, 2, 3]
+    tasks: dict = {}
+    operation: Literal['fetch', 'delete', 'update', 'check_if_empty']
+    
+class SetImportedTasksSchema(BaseModel):
+    request_id: str
+    task_ids: list
+    
+class GetOTPSchema(BaseModel):
+    username: str
+    
+class LoginSchema(BaseModel):
+    username: str
+    otp: str
+    
+class AdditionalAnalysesRequestSchema(BaseModel):
+    model: str
+    new_tasks_prompt: str
+    request_id: str
 
 
 class CommonColumnCombinationOperation(BaseModel):
@@ -196,12 +234,12 @@ class ColStatsStepModel(BaseModel):
     
     model_config = ConfigDict(extra='forbid')
 
-resample_allowed_calc = Literal['sum', 'mean', 'median', 'min', 'max', 'first', 'last']
+resample_allowed_calc = Literal['sum', 'mean', 'median', 'min', 'max', 'first', 'last', 'count']
 class ResampleDataStepModel(BaseModel):
     function: Literal['resample_data']
     date_column: List[str] | str
     frequency: Literal['day', 'week', 'month', 'year', 'quarter']   
-    columns_to_group_by: List[str]
+    static_group_cols: List[str]
     columns_to_aggregate: List[str] | str
     calculation: resample_allowed_calc | List[resample_allowed_calc] 
     
@@ -329,7 +367,7 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
         
         run_type = info.context.get('run_type')
         
-        min_valid_values = MIN_VALID_COMMON_TASKS_FIRST_RUN if run_type == 'first_run_after_request' else MIN_VALID_COMMON_TASKS_SUBSEQUENT_RUNS
+        min_valid_values = Config.MIN_VALID_COMMON_TASKS_FIRST_RUN if run_type == 'first_run_after_request' else Config.MIN_VALID_COMMON_TASKS_SUBSEQUENT_RUNS
         
         if len(valid_values) < min_valid_values:
             raise ValueError('too few valid common_tasks')
@@ -338,27 +376,12 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
 class DataTasks(BaseModel):
     columns: list[ColumnModel] = []
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
-    common_tasks: list[CommonTaskModel] = Field(min_length=1)
     common_column_combination: list[CommonColumnCombinationModel] = []
+    common_tasks: list[CommonTaskModel] = Field(min_length=1)
 
     model_config = ConfigDict(extra='forbid')
     
 class ExecuteAnalysesSchema(DataTasks):
     request_id: str
     send_result_to_email: bool
-    
-class AdditionalAnalysesRequestSchema(BaseModel):
-    model: str
-    new_tasks_prompt: str
-    request_id: str
-    
-
-if __name__ == '__main__':
-    import json
-    with open('resp1.json', 'r') as f:
-        data = json.load(f)
-        
-    DatasetAnalysisModelPartOne.model_validate(data, context={
-        'required_cols': 
-        ['id', 'loan_amnt', 'term', 'int_rate', 'installment', 'home_ownership','annual_inc', 'verification_status', 'issue_d', 'loan_status','purpose', 'total_pymnt']})
     

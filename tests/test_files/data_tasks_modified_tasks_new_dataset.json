@@ -1,0 +1,209 @@
+{ "common_column_combination": [
+        {
+            "name": "average_item_price",
+            "description": "Calculates the average price per item sold.",
+            "operation": {
+                "source_columns": [
+                    "sales",
+                    "quantity"
+                ],
+                "expression": "sales / quantity"
+            }
+        },
+        {
+            "name": "profit_margin",
+            "description": "Calculates the profit as a percentage of sales.",
+            "operation": {
+                "source_columns": [
+                    "profit",
+                    "sales"
+                ],
+                "expression": "profit / sales"
+            }
+        },
+        {
+            "name": "net_sales",
+            "description": "Calculates sales after applying the discount.",
+            "operation": {
+                "source_columns": [
+                    "sales",
+                    "discount"
+                ],
+                "expression": "sales * (1 - discount)"
+            }
+        },
+        {
+            "name": "discount_amount",
+            "description": "Calculates the monetary value of the discount applied.",
+            "operation": {
+                "source_columns": [
+                    "sales",
+                    "discount"
+                ],
+                "expression": "sales * discount"
+            }
+        }
+    ],
+    "common_column_cleaning_or_transformation": [
+        {
+            "name": "order_year",
+            "description": "Extracts the year from the order date.",
+            "operation": {
+                "type": "date_op",
+                "source_column": "order_date",
+                "function": "YEAR"
+            }
+        },
+        {
+            "name": "order_month",
+            "description": "Extracts the month from the order date.",
+            "operation": {
+                "type": "date_op",
+                "source_column": "order_date",
+                "function": "MONTH"
+            }
+        },
+        {
+            "name": "discount_category",
+            "description": "Categorizes discounts into levels: No Discount, Low Discount, High Discount.",
+            "operation": {
+                "type": "map_range",
+                "source_column": "discount",
+                "ranges": [
+                    {
+                        "range": "0.0-0.0",
+                        "label": "No Discount"
+                    },
+                    {
+                        "range": "0.0-0.3",
+                        "label": "Low Discount"
+                    },
+                    {
+                        "range": "0.3-inf",
+                        "label": "High Discount"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "shipping_tier",
+            "description": "Groups ship modes into broader shipping tiers.",
+            "operation": {
+                "type": "map",
+                "source_column": "ship_mode",
+                "mapping": {
+                    "first class": "Expedited",
+                    "same day": "Expedited",
+                    "standard class": "Standard",
+                    "second class": "Standard"
+                }
+            }
+        }
+    ],
+    
+    "common_tasks": [
+        {
+            "name": "Monthly Total Sales Trend by Region",
+            "task_id": 1,
+            "description": "Calculate the total sales for each region on a monthly basis to observe sales trends over time.",
+            "steps": [
+                {
+                    "function": "resample_data",
+                    "date_column": "order_date",
+                    "frequency": "month",
+                    "columns_to_aggregate": [
+                        "sales"
+                    ],
+                    "calculation": "sum",
+                    "static_group_cols": [
+                        "region"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Top 10 Product Names by Total Profit",
+            "task_id": 2,
+            "description": "Identify the 10 product names that have generated the highest total profit across all transactions.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "product_name"
+                    ],
+                    "columns_to_aggregate": [
+                        "profit"
+                    ],
+                    "calculation": "sum"
+                },
+                {
+                    "function": "get_top_or_bottom_N_entries",
+                    "sort_by_column_name": "profit",
+                    "order": "top",
+                    "number_of_entries": 10,
+                    "return_columns": [
+                        "product_name",
+                        "profit"
+                    ]
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Average Profit Margin per Product Sub-Category",
+            "task_id": 3,
+            "description": "Calculate the average profit margin for each product sub-category to assess their relative profitability.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "sub_category"
+                    ],
+                    "columns_to_aggregate": [
+                        "profit_margin"
+                    ],
+                    "calculation": "mean"
+                }
+            ],
+            "score": "high"
+        },
+        {
+            "name": "Total Net Sales and Quantity by Shipping Tier",
+            "task_id": 4,
+            "description": "Summarize total net sales and total quantity for each shipping tier to evaluate the performance of different shipping services.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "shipping_tier"
+                    ],
+                    "columns_to_aggregate": [
+                        "net_sales",
+                        "quantity"
+                    ],
+                    "calculation": "sum"
+                }
+            ],
+            "score": "medium"
+        },
+        {
+            "name": "Sales and Profit by Discount Category",
+            "task_id": 5,
+            "description": "Analyze the total sales and total profit generated by different discount categories to understand the impact of discounting strategies.",
+            "steps": [
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "discount_category"
+                    ],
+                    "columns_to_aggregate": [
+                        "sales",
+                        "profit"
+                    ],
+                    "calculation": "sum"
+                }
+            ],
+            "score": "high"
+        }]
+    }

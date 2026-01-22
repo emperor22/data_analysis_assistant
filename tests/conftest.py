@@ -5,7 +5,7 @@ from app.crud import (Base, UserTableOperation, PromptTableOperation, TaskRunTab
 from app.schemas import DatasetAnalysisModelPartOne, DatasetAnalysisModelPartTwo, DataTasks
 
 from app.auth import get_current_user
-from app.services import get_background_tasks
+from app.services import get_background_tasks, get_dataset_id
 from app.api import app
 from app import tasks, api
 from app.data_transform_utils import clean_dataset
@@ -36,6 +36,7 @@ TEST_DB_URL_ASYNC = 'sqlite+aiosqlite:///./testing_xx.sqlite'
 TEST_DB_URL_SYNC = 'sqlite:///./testing_xx.sqlite'
 
 TEST_UUID = 'xxxx-xxxx-xxxx-xxxx'
+TEST_USERNAME = 'emperor22'
 
 TEST_DEFAULT_MODEL = 'gemini-2.5-flash'
 TEST_DEFAULT_DATASET_FILE = 'tests/test_files/1_netflix-rotten-tomatoes-metacritic-imdb.csv'
@@ -45,10 +46,20 @@ TEST_PROMPT_VERSION = 3
 
 TEST_DEFAULT_OTP = '000000'
 
+TEST_PT1_RESP_FILE = 'tests/test_files/resp_pt1.json'
+TEST_PT2_RESP_FILE = 'tests/test_files/resp_pt2.json'
+TEST_CLEAN_DATASET_FILE = 'tests/test_files/clean_dataset.parquet' # need to be prepared using clean_dataset func
+TEST_DATA_TASKS_FILE_RUNTYPE_FIRST_REQUEST = 'tests/test_files/data_tasks.json' # need to be prepared by using the two part response validation
+TEST_DATA_TASKS_FILE_RUNTYPE_MODIFIED_TASKS = 'tests/test_files/data_tasks_modified_tasks.json'
+TEST_DATA_TASKS_FILE_RUNTYPE_MODIFIED_TASKS_NEW_DATASET = 'tests/test_files/data_tasks_modified_tasks_new_dataset.json'
+
+TEST_DEFAULT_SEND_EMAIL = False
+TEST_DEFAULT_RUN_NAME = 'testrun123'
+TEST_DEFAULT_DATASET_FILENAME = 'test_dataset.csv'
+
 @pytest.fixture(scope='session')
 def clean_dataset_df():
-    filename = TEST_DEFAULT_CLEAN_DATASET_FILE
-    df = pd.read_parquet(filename)
+    df = pd.read_parquet(TEST_CLEAN_DATASET_FILE)
     
     return df
 
@@ -59,62 +70,38 @@ def dataset_cols(clean_dataset_df):
     return dataset_cols
 
 @pytest.fixture(scope='session')
-def get_prompt_result_data(dataset_cols):
-    pt1_resp_file = 'tests/test_files/resp_pt1.json'
+def get_prompt_result_data(dataset_cols, clean_dataset_df):
+
         
-    pt2_resp_file = 'tests/test_files/resp_pt2.json'
-        
-    data = {'resp_pt1_file': pt1_resp_file, 'resp_pt2_file': pt2_resp_file, 
+    data = {'resp_pt1_file': TEST_PT1_RESP_FILE, 'resp_pt2_file': TEST_PT2_RESP_FILE, 
             'model': TEST_DEFAULT_MODEL, 'task_count': TEST_DEFAULT_TASK_COUNT, 
             'request_id': TEST_UUID, 'user_id': TEST_UUID, 
-            'dataset_cols': literal_eval(dataset_cols)}
+            'dataset_cols': literal_eval(dataset_cols), 'dataset_id': get_dataset_id(clean_dataset_df)}
     
     return data
 
-
 @pytest.fixture(scope='session')
-def get_prompt_result_task_exp_output(get_prompt_result_data):
-    pt1_prompt_file = get_prompt_result_data['resp_pt1_file']
-    pt2_prompt_file = get_prompt_result_data['resp_pt2_file']
-    request_id = get_prompt_result_data['request_id']
-    dataset_cols = get_prompt_result_data['dataset_cols']
-    
-    with open(pt1_prompt_file, 'r') as f:
-        pt1_prompt_json = json.load(f)
+def data_processing_task_first_run_flow_data(user_register_data):
+    with open(TEST_DATA_TASKS_FILE_RUNTYPE_FIRST_REQUEST, 'r') as f:
+        data_tasks_dict_first_req = json.load(f)
         
-    with open(pt2_prompt_file, 'r') as f:
-        pt2_prompt_json = json.load(f)
-    pt1_context = {'required_cols': dataset_cols, 'request_id': request_id}
-    pt2_context = {'run_type': 'first_run_after_request', 'request_id': request_id}
+    with open(TEST_DATA_TASKS_FILE_RUNTYPE_MODIFIED_TASKS, 'r') as f:
+        data_tasks_dict_mdfd_tasks = json.load(f)
+        
+    with open(TEST_DATA_TASKS_FILE_RUNTYPE_MODIFIED_TASKS_NEW_DATASET, 'r') as f:
+        data_tasks_dict_mdfd_tasks_new_dataset = json.load(f)
     
-    pt1_prompt_validated = DatasetAnalysisModelPartOne.model_validate(pt1_prompt_json, context=pt1_context)
-    pt2_prompt_validated = DatasetAnalysisModelPartTwo.model_validate(pt2_prompt_json, context=pt2_context)
-    prompt_validated = {**pt1_prompt_validated.model_dump(), **pt2_prompt_validated.model_dump()}
-    
-    expected_data_tasks = DataTasks(
-                        columns=prompt_validated['columns'],
-                        common_tasks=prompt_validated['common_tasks'], 
-                        common_column_cleaning_or_transformation=prompt_validated['common_column_cleaning_or_transformation'],
-                        common_column_combination=prompt_validated['common_column_combination']
-                        )
-    
-    expected_res = expected_data_tasks.model_dump()
-    
-    return expected_res
-
-@pytest.fixture(scope='session')
-def data_processing_task_first_run_flow_data(get_prompt_result_task_exp_output):
-    
-    data_tasks_dict = get_prompt_result_task_exp_output
-    
-    TEST_CLEAN_DATASET_FILE = 'tests/test_files/clean_dataset.parquet'
-
-    run_info = {'request_id': TEST_UUID, 'user_id': TEST_UUID, 'parquet_file': TEST_CLEAN_DATASET_FILE}
+    run_info = {'request_id': TEST_UUID, 'user_id': TEST_UUID, 'parquet_file': TEST_CLEAN_DATASET_FILE, 
+                'send_result_to_email': TEST_DEFAULT_SEND_EMAIL, 'email': user_register_data['email'], 'filename': TEST_DEFAULT_DATASET_FILENAME, 
+                'run_name': TEST_DEFAULT_RUN_NAME}
     
     data = {'user_id': TEST_UUID, 
             'request_id': TEST_UUID,
             'run_type': 'first_run_after_request', 
-            'data_tasks_dict': data_tasks_dict, 
+            'data_tasks_dict_first_req': data_tasks_dict_first_req,
+            'data_tasks_dict_mdfd_tasks': data_tasks_dict_mdfd_tasks, 
+            'data_tasks_dict_addt_analyses': data_tasks_dict_mdfd_tasks, 
+            'data_tasks_dict_mdfd_tasks_new_dataset': data_tasks_dict_mdfd_tasks_new_dataset,
             'run_info': run_info}
     
     return data
@@ -244,7 +231,7 @@ def additional_analyses_request_data():
 @pytest.fixture(scope='session')
 def get_current_user_dependency_data():
     class TestUser():
-        username = 'emperor22'
+        username = TEST_USERNAME
         user_id = TEST_UUID
     
     return TestUser()

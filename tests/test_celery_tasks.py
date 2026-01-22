@@ -1,86 +1,111 @@
 import pytest
 import json
-from app.tasks import (get_prompt_result_task, get_additional_analyses_prompt_result, data_processing_task,
-                       MOCK_PROMPT_RESULT, PT1_PROMPT_MOCK_FILE, PT2_PROMPT_MOCK_FILE, TaskStatus)
+from app.tasks import get_prompt_result_task, data_processing_task, TaskStatus, TaskProcessingRunType
 
-from app.schemas import DataTasks
-
-from app import tasks
-
-import pandas as pd
-
-from unittest import mock
-
-from app.services import get_dataset_snippet
 
 
 def test_get_prompt_result_task(monkeypatch, mocker, get_prompt_result_data):
     
-    pt1_prompt_file = get_prompt_result_data['resp_pt1_file']
-    pt2_prompt_file = get_prompt_result_data['resp_pt2_file']
     model = get_prompt_result_data['model']
     task_count = get_prompt_result_data['task_count']
     request_id = get_prompt_result_data['request_id']
     user_id = get_prompt_result_data['user_id']
     dataset_cols = get_prompt_result_data['dataset_cols']
+    dataset_id = get_prompt_result_data['dataset_id']
+    resp_pt1_file = get_prompt_result_data['resp_pt1_file']
+    resp_pt2_file = get_prompt_result_data['resp_pt2_file']
     prompt_pt_1 = ''
     
-    monkeypatch.setattr(tasks, 'MOCK_PROMPT_RESULT', True)
-    monkeypatch.setattr(tasks, 'PT1_PROMPT_MOCK_FILE', pt1_prompt_file)
-    monkeypatch.setattr(tasks, 'PT2_PROMPT_MOCK_FILE', pt2_prompt_file)
     
     mock_change_request_status_sync = mocker.patch('app.tasks.PromptTableOperation.change_request_status_sync')
     mocker.patch('app.tasks.PromptTableOperation.insert_prompt_result_sync')
+
+    res = get_prompt_result_task(model=model, prompt_pt_1=prompt_pt_1, task_count=task_count, dataset_id=dataset_id, request_id=request_id, user_id=user_id, dataset_cols=dataset_cols, 
+                                 mock_pt1_resp_file=resp_pt1_file, mock_pt2_resp_file=resp_pt2_file)
     
-    mock_data_tasks_model_dump = mocker.patch('app.tasks.DataTasks.model_dump')
-
-    res = get_prompt_result_task(model=model, prompt_pt_1=prompt_pt_1, task_count=task_count, request_id=request_id, user_id=user_id, dataset_cols=dataset_cols)
+    last_update_status_call = mock_change_request_status_sync.call_args_list[-1].kwargs
     
-    change_status_calls = mock_change_request_status_sync.call_args_list
+    assert last_update_status_call['status'] == TaskStatus.initial_request_prompt_received.value, 'last status change must be "prompt received"'
     
-    assert len(change_status_calls) == 2
-    assert change_status_calls[0][1]['status'] == TaskStatus.waiting_for_initial_request_prompt.value
-    assert change_status_calls[1][1]['status'] == TaskStatus.initial_request_prompt_received.value
-    # assert res == get_prompt_result_task_exp_output
-    mock_data_tasks_model_dump.assert_called_once()    
+    # assert if res looks correct
+    assert isinstance(res, dict), "task result must be a dict"
+    assert len(res) > 0, "task result cannot be an empty dict"
 
+def read_json(json_str):
+    try:
+        dct = json.loads(json_str)
+        return dct
+    except ValueError:
+        return None
 
+run_types = [TaskProcessingRunType.first_run_after_request.value, 
+             TaskProcessingRunType.modified_tasks_execution.value, 
+             TaskProcessingRunType.additional_analyses_request.value, 
+             TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value
+]
 
-def test_data_processing_task(mocker, data_processing_task_first_run_flow_data):
+@pytest.mark.parametrize('run_type', run_types)
+def test_data_processing_task(mocker, data_processing_task_first_run_flow_data, run_type):
         
     user_id = data_processing_task_first_run_flow_data['user_id']
     request_id = data_processing_task_first_run_flow_data['request_id']
-    data_tasks_dict = data_processing_task_first_run_flow_data['data_tasks_dict']
-    run_type = data_processing_task_first_run_flow_data['run_type']
+    
+    data_tasks_dict_first_req = data_processing_task_first_run_flow_data['data_tasks_dict_first_req']
+    data_tasks_dict_mdfd_tasks = data_processing_task_first_run_flow_data['data_tasks_dict_mdfd_tasks']
+    data_tasks_dict_addt_analyses = data_processing_task_first_run_flow_data['data_tasks_dict_addt_analyses']
+    data_tasks_dict_mdfd_tasks_new_dataset = data_processing_task_first_run_flow_data['data_tasks_dict_mdfd_tasks_new_dataset']
+    
     run_info = data_processing_task_first_run_flow_data['run_info']
 
-    
     mock_change_request_status_sync = mocker.patch('app.tasks.PromptTableOperation.change_request_status_sync')
-    mock_add_task_result_sync = mocker.patch('app.services.TaskRunTableOperation.add_task_result_sync')
-    mock_save_dataset_req_id = mocker.patch('app.services.save_dataset_req_id')
-    mock_update_final_dataset_snippet_sync = mocker.patch('app.services.TaskRunTableOperation.update_final_dataset_snippet_sync')
-    mock_update_original_common_task_result_sync = mocker.patch('app.services.TaskRunTableOperation.update_original_common_task_result_sync')
-    mock_update_column_transform_task_status_sync = mocker.patch('app.services.TaskRunTableOperation.update_column_transform_task_status_sync')
-    mock_update_column_combination_task_status_sync = mocker.patch('app.services.TaskRunTableOperation.update_column_combination_task_status_sync')
-    mock_update_columns_info_sync = mocker.patch('app.services.TaskRunTableOperation.update_columns_info_sync')
     
-    _ = data_processing_task(data_tasks_dict, run_info, run_type)
+    mock_task_run_table_ops = mocker.patch('app.tasks.TaskRunTableOperation')
+    mock_task_run_table_ops.return_value.request_id_exists.return_value = False
     
-    change_status_calls = mock_change_request_status_sync.call_args_list
+    mocker.patch('app.services.save_dataset_req_id')
+    mocker.patch('app.services.result_save_handler')
     
-    assert len(change_status_calls) == 2
-    assert change_status_calls[0][1]['status'] == TaskStatus.doing_initial_tasks_run.value
-    assert change_status_calls[1][1]['status'] == TaskStatus.initial_tasks_run_finished.value
+    data_tasks_dct = {TaskProcessingRunType.first_run_after_request.value: data_tasks_dict_first_req, 
+                      TaskProcessingRunType.modified_tasks_execution.value: data_tasks_dict_mdfd_tasks, 
+                      TaskProcessingRunType.additional_analyses_request.value: data_tasks_dict_addt_analyses, 
+                      TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: data_tasks_dict_mdfd_tasks_new_dataset
+                      }
     
-    mock_add_task_result_sync.assert_called_once_with(request_id=request_id, user_id=user_id, original_common_tasks=mock.ANY)
+    finished_status_dct = {TaskProcessingRunType.first_run_after_request.value: TaskStatus.initial_tasks_run_finished.value, 
+                    TaskProcessingRunType.modified_tasks_execution.value: TaskStatus.customized_tasks_run_finished.value, 
+                    TaskProcessingRunType.additional_analyses_request.value: TaskStatus.additional_tasks_run_finished.value, 
+                    TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.doing_customized_tasks_run.value}
     
-    mock_update_final_dataset_snippet_sync.assert_called_once_with(request_id=request_id, dataset_snippet=mock.ANY)
+    update_task_result_func_dct = {
+                        TaskProcessingRunType.first_run_after_request.value: 'update_original_common_task_result_sync', 
+                        TaskProcessingRunType.modified_tasks_execution.value: 'update_task_result_sync', 
+                        TaskProcessingRunType.additional_analyses_request.value: 'update_original_common_task_result_sync', 
+                        TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: 'update_task_result_sync'}
     
-    mock_update_original_common_task_result_sync.assert_called_once_with(request_id=request_id, original_common_tasks=mock.ANY)
-    mock_update_column_transform_task_status_sync.assert_called_once_with(request_id=request_id, column_transforms_status=mock.ANY)
-    mock_update_column_combination_task_status_sync.assert_called_once_with(request_id=request_id, column_combinations_status=mock.ANY)
-    mock_update_columns_info_sync.assert_called_once_with(request_id=request_id, columns_info=mock.ANY)
-    mock_save_dataset_req_id.assert_called_once_with(save_path=mock.ANY, request_id=request_id, dataframe=mock.ANY, save_type='original_dataset')
+    data_tasks = data_tasks_dct[run_type]
+    
+    _ = data_processing_task(data_tasks, run_info, run_type)
+    
+    mock_task_run_table_ops = mock_task_run_table_ops.return_value
+    
+    if run_type == TaskProcessingRunType.first_run_after_request.value:
+        mock_task_run_table_ops.add_task_result_sync.assert_called_once_with(request_id=request_id, user_id=user_id) # to check if the result is inserted into task_run table
+
+    # check if status changed to finished
+    last_change_status_calls_kwargs = mock_change_request_status_sync.call_args_list[-1].kwargs
+    
+
+    
+    assert last_change_status_calls_kwargs['status'] == finished_status_dct[run_type], 'last status change must be "task finished"'
+    
+    
+    update_task_result_call_kwargs = getattr(mock_task_run_table_ops, update_task_result_func_dct[run_type]).call_args_list[-1].kwargs
+    assert 'tasks' in update_task_result_call_kwargs, 'last call of task_run_table_ops doesnt contain "tasks" argument'
+    
+    tasks_dct = read_json(update_task_result_call_kwargs['tasks'])
+    assert tasks_dct is not None, 'task result must be a valid dictionary'
+    assert list(tasks_dct.keys())[0] == 'tasks', 'task dct must contain list of tasks as value of the key "tasks"'
+    assert len(list(tasks_dct.values())[0]) > 0, 'list of tasks in task dct cannot be empty'
     
 
     
