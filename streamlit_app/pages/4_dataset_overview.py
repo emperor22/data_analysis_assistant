@@ -4,7 +4,7 @@ import json
 
 from io import StringIO
 
-from utils import get_col_info_by_id, get_dataset_snippet_by_id, render_task_ids
+from utils import get_col_info_by_id, get_dataset_snippet_by_id, render_request_ids
 
 st.markdown(
     """
@@ -17,7 +17,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-task_id = render_task_ids()
+task_id = render_request_ids()
 
 
 col_info = get_col_info_by_id(task_id=task_id)
@@ -88,7 +88,7 @@ for col_info in col_info:
             col_a, col_b, col_c = st.columns(3)
             
             with col_a:
-                st.metric("Missing Values", f"{col_info['missing_count']:,} ({col_info['missing_value_ratio']:.1%})")
+                st.metric("Missing Values", f"{col_info['missing_count']:,} ({col_info['missing_value_ratio']:.1%})",)
             
             with col_b:
                 st.metric("Unique Values", f"{col_info['unique_count']:,} ({col_info['uniqueness_ratio']:.1%})")

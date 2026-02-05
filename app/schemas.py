@@ -5,8 +5,9 @@ from typing import Optional
 from typing_extensions import NotRequired
 from enum import Enum
 from app.logger import logger
-from app.config import Config
+from app.config import Config, model_list_dct
 from typing import TypedDict
+from dataclasses import dataclass
 
 
 
@@ -32,6 +33,8 @@ class TaskStatus(Enum):
     
     deleted_because_not_accessed_recently = 'TASK DELETED BECAUSE IT IS NOT ACCESSED FOR SOME TIME'
     
+    failed_because_rate_limited = 'LLM ENDPOINT IS RATE LIMITED'
+    
 class TaskProcessingRunType(Enum):
     first_run_after_request = 'first_run_after_request'
     modified_tasks_execution = 'modified_tasks_execution'
@@ -40,9 +43,16 @@ class TaskProcessingRunType(Enum):
     
 
 
-RunInfoSchema = TypedDict('RunInfoSchema', {'request_id': str, 'user_id': str, 'parquet_file': str, 
-                                            'filename': str, 'send_result_to_email': str, 'email': str, 
-                                            'run_name': str})
+
+@dataclass
+class RunInfo:
+    request_id: str
+    user_id: str
+    parquet_file: str
+    filename: str
+    send_result_to_email: str
+    email: str
+    run_name: str
 
 
     
@@ -58,12 +68,22 @@ class UserRegisterSchema(BaseModel):
     last_name: str
 
 
-class UploadDatasetSchema(BaseModel):
+
+class ModelAndProviderSchema(BaseModel):
+    provider: Literal[tuple(Config.LLM_PROVIDER_LIST)] # type: ignore
+    model: str
+    
+    @model_validator(mode='after')
+    def check_if_model_is_valid(self):
+        if self.model not in model_list_dct[self.provider]:
+            raise ValueError("model not in the provider's model list")
+            
+        return self
+class UploadDatasetSchema(ModelAndProviderSchema):
     run_name: str
-    model: Literal[tuple(Config.LLM_MODEL_LIST_GOOGLE)]  # type: ignore
     analysis_task_count: int = Field(lt=Config.MAX_TASK_COUNT + 1)
     send_result_to_email: bool
-    
+
 class UserCustomizedTasksSchema(BaseModel):
     request_id: str
     slot: int = Literal[1, 2, 3]
@@ -81,11 +101,19 @@ class LoginSchema(BaseModel):
     username: str
     otp: str
     
-class AdditionalAnalysesRequestSchema(BaseModel):
-    model: str
+class AdditionalAnalysesRequestSchema(ModelAndProviderSchema):
     new_tasks_prompt: str
-    request_id: str
+    send_result_to_email: bool
+    
+class SetupAPIKeySchema(BaseModel):
+    key: str
+    provider: Literal[tuple(Config.LLM_PROVIDER_LIST)] # type: ignore
+    
+class JoinDatasetSchema(BaseModel):
+    join_method: Literal['inner', 'outer', 'left', 'right']
+    join_keys: list[tuple]
 
+##################################################################
 
 class CommonColumnCombinationOperation(BaseModel):
     source_columns: List[str] = Field(min_length=1)  # type: ignore
@@ -178,7 +206,7 @@ class ColumnModel(BaseModel):
     ]
     confidence_score: Literal['low', 'medium', 'high', 'inapplicable']
     data_type: Literal['string', 'integer', 'float', 'datetime']
-    type: Literal['Categorical', 'Numerical']
+    type: Literal['Categorical', 'Numerical', 'Temporal']
     unit: str = ''
     expected_values: str | List[str | int | float] = []
     
@@ -269,7 +297,7 @@ def validate_model_wrapper(val, model):
         return False
 
 def log_invalid_values(run, invalid_vals_num, req_id, common_task_id):
-    invalid_vals_num = [str(i) for i in invalid_vals_num]
+    invalid_vals_num = [str(i+1) for i in invalid_vals_num] # offset by one for easier debugging
     if run == 'common_tasks':
         logger.warning(f'invalid common_tasks step: request_id {req_id}, task id {common_task_id}, steps {", ".join(invalid_vals_num)}')
     else:
@@ -296,16 +324,30 @@ def filter_out_invalid_values(values, model_key_func, model_map, run, req_id, co
             
     return valid_vals_num
 
-class DatasetAnalysisModelPartOne(BaseModel):
-    domain: str
-    description: str
-    is_time_series: bool
-    inferred_granularity: str
-    columns: List[ColumnModel]
+
+class ColumnInfoAndOperations(BaseModel):
+    columns: list[ColumnModel] = []
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_column_combination: list[CommonColumnCombinationModel] = []
     
-    model_config = ConfigDict(extra='forbid')
+    @field_validator('columns', mode='after')
+    @classmethod
+    def check_all_columns_exist(cls, value, info):
+        is_from_data_tasks = info.context.get('is_from_data_tasks')
+        
+        if is_from_data_tasks:
+            return value
+        
+        req_cols = info.context.get('required_cols')
+        req_id = info.context.get('request_id')
+        resp_cols = [col.name for col in value]
+        missing = set(req_cols) - set(resp_cols)
+        if missing:
+            missing_cols = {', '.join(missing)}
+            logger.warning(f"some columns are missing from the 'columns' section. cols list {missing_cols}; request_id {req_id}")
+            raise ValueError(f"some columns are missing from the response: {missing_cols}")
+            
+        return value
     
     @field_validator('common_column_cleaning_or_transformation', mode='after')
     @classmethod
@@ -329,19 +371,16 @@ class DatasetAnalysisModelPartOne(BaseModel):
 
         return [val for i, val in enumerate(values) if i in valid_vals_num]
     
-    @field_validator('columns', mode='after')
-    @classmethod
-    def check_all_columns_exist(cls, value, info):
-        req_cols = info.context.get('required_cols')
-        req_id = info.context.get('request_id')
-        resp_cols = [col.name for col in value]
-        missing = set(req_cols) - set(resp_cols)
-        if missing:
-            missing_cols = {', '.join(missing)}
-            logger.warning(f"some columns are missing from the 'columns' section. cols list {missing_cols}; request_id {req_id}")
-            raise ValueError(f"some columns are missing from the response: {missing_cols}")
-            
-        return value
+
+class DatasetAnalysisModelPartOne(ColumnInfoAndOperations):
+    domain: str
+    description: str
+    is_time_series: bool
+    inferred_granularity: str
+    
+    
+    model_config = ConfigDict(extra='forbid')
+
 class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent task runs
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
 
@@ -351,6 +390,7 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
     @field_validator('common_tasks', mode='after')
     @classmethod
     def filter_common_tasks(cls, values, info):
+
         req_id = info.context.get('request_id')
         
         valid_values = []
@@ -360,10 +400,10 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
             valid_steps_num = filter_out_invalid_values(task.steps, model_key_func, STEP_MODELS, 'common_tasks', req_id, task.task_id)
             
             if len(valid_steps_num) < len(task.steps):
-                logger.warning(f"task discarded: task id {task.task_id}") 
-            
-            if len(valid_steps_num) == len(task.steps):
-                valid_values.append(task)
+                logger.warning(f"task discarded: task_id {task.task_id} request_id {req_id}") 
+                continue
+
+            valid_values.append(task)
         
         run_type = info.context.get('run_type')
         
@@ -373,15 +413,13 @@ class DatasetAnalysisModelPartTwo(BaseModel): # smaller model for subsequent tas
             raise ValueError('too few valid common_tasks')
         return valid_values
     
-class DataTasks(BaseModel):
-    columns: list[ColumnModel] = []
+class DataTasks(ColumnInfoAndOperations, DatasetAnalysisModelPartTwo):
     common_column_cleaning_or_transformation: list[CommonColumnCleaningOrTransformationModel] = []
     common_column_combination: list[CommonColumnCombinationModel] = []
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
-
-    model_config = ConfigDict(extra='forbid')
+    
+    model_config = ConfigDict(extra='ignore')
     
 class ExecuteAnalysesSchema(DataTasks):
-    request_id: str
     send_result_to_email: bool
     

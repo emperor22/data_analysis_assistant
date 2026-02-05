@@ -6,6 +6,14 @@ import json
 from app.logger import logger
 from app.config import Config
 
+import re
+
+from io import BytesIO
+
+import duckdb
+
+from typing import Literal
+
 
 
 
@@ -74,16 +82,31 @@ def handle_datetime_columns_serialization(df: pd.DataFrame):
     
     return df
 
-@logger.catch
+def clean_column_name(col_name):
+    cleaned = col_name.strip().lower().replace(" ", "_").replace("-", "_")
+    cleaned = re.sub(r"[^a-z0-9_]", "", cleaned)
+    return cleaned
+
+@logger.catch(reraise=True)
 def clean_dataset(df):
     df = df.copy()
 
     # for column names, strip, make lowercase, replace space and dash with _, and remove non-alphanum characters
-    df.columns = df.columns.str.strip().str.lower().str.replace(' ', '_', regex=False).str.replace('-', '_') \
-                            .str.replace('[^a-z0-9_]', '', regex=True)
+    df.columns = [clean_column_name(i) for i in df.columns]
     
     # cleaning column values
     for col in df.columns:
+        
+        # handling boolean values
+        true_vals = [True, 'True', 'true']
+        false_vals = [False, 'False', 'false']
+        true_replace = {i: 1 for i in true_vals}
+        false_replace = {i: 0 for i in false_vals}
+        replace_bool = {**true_replace, **false_replace}
+        
+        for val, rpl_val in replace_bool.items():
+            df[col] = df[col].replace(val, rpl_val)
+        
         temp_series_nonull_idx = df[col].dropna().index # for later when getting conversion success rate only for non-null rows
         # assume column is numeric and try to cast it to numeric type after cleaning
         if df[col].dtype == 'object':
@@ -145,20 +168,16 @@ def groupby_func(df: pd.DataFrame, columns_to_group_by: list, columns_to_aggrega
         
     df = df.copy()
     
-    # handling non numeric aggregation columns by converting them to numeric type first
-    for col in columns_to_aggregate:
-        if not is_numeric_dtype(df[col]):
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    if isinstance(calculation, list) and len(calculation) > 1:
-        agg_dct = {col: calculation for col in columns_to_aggregate}
-        df = df.groupby(columns_to_group_by, as_index=False).agg(agg_dct)
-        df.columns = [f'{i[0]}_{i[1]}' for i in df.columns] # merging the two level of column names into one
+    if isinstance(calculation, list):
+        if len(calculation) > 1:
+            agg_dct = {col: calculation for col in columns_to_aggregate}
+            df = df.groupby(columns_to_group_by, as_index=False).agg(agg_dct)
+            df.columns = [f'{i[0]}_{i[1]}' for i in df.columns] # merging the two level of column names into one
+            
+            return df
         
-        return df
-        
-    if isinstance(calculation, list) and len(calculation) == 1:
-        calculation = calculation[0]
+        elif len(calculation) == 1:
+            calculation = calculation[0]
         
     df = df.groupby(columns_to_group_by, as_index=False)[columns_to_aggregate].apply(calculation)
         
@@ -214,7 +233,14 @@ def filter_func(df: pd.DataFrame, column_name: str | list, operator: str, values
     df = df.query(query_string)
 
     return df
-                
+
+
+
+def check_header(file_bytes):
+    with open(BytesIO(file_bytes)) as f:
+        first = f.read(1)
+    return first not in '.-0123456789'
+
 def get_top_or_bottom_n_entries_func(df: pd.DataFrame, sort_by_column_name: str | list, order: str, number_of_entries: int, return_columns: list):
     for cols_to_check in sort_by_column_name, return_columns:
         validate_columns(cols_to_check, df.columns.tolist())
@@ -414,8 +440,11 @@ def get_column_properties(series, is_numeric, is_datetime):
             col_info_dct['type_dependent_properties'] = type_prop_dct
         
         else:
-
-            string_length = series.str.len()
+            try:
+                string_length = series.str.len()
+            except AttributeError: # for when the series doesnt have str attribute
+                series = series.astype(str)
+                string_length = series.str.len()
             
             type_prop_dct = {'datatype': 'string', 'max_length': string_length.max(), 'mean_length': string_length.mean(),
                                 'max_length': string_length.max(), 'mean_length': string_length.mean(), 
@@ -490,3 +519,19 @@ def determine_result_output_type(df: pd.DataFrame):
             return 'BAR_CHART'
 
     return 'DISPLAY_TABLE'
+
+
+def get_dataset_id(df: pd.DataFrame):
+    return json.dumps({col: str(df[col].dtype) for col in sorted(df.columns)})
+
+def join_df_duckdb(df1, df2, join_keys, how: Literal['inner', 'left', 'right', 'outer'] = 'inner'):
+    conn = duckdb.connect()
+
+    r1 = conn.from_df(df1)
+    r2 = conn.from_df(df2)
+
+    condition = " AND ".join(f"l.{l} = r.{r}" for l, r in join_keys)
+    
+    joined_df = (r1.alias("l").join(r2.alias("r"), condition, how=how).df())
+
+    return joined_df

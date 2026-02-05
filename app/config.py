@@ -87,14 +87,24 @@ class Configs(BaseSettings):
     DATABASE_URL_SYNC: str
     
     
-
+    MAX_RETRIES_GET_PROMPT_RESULT_TASK: int = 10
+    MAX_RETRIES_ADDT_ANALYSES_REQ_TASK: int = 6
 
     FAILED_ATTEMPT_THRESHOLD_FOR_BLACKLIST: int = 5
+    RATE_LIMIT_RETRY_COUNT_CAP: int = 5
+    
 
 
     # services.py
-    LLM_API_KEY: str
-    LLM_ENDPOINT: str = 'https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent'
+    LLM_API_KEY_GOOGLE: str
+    LLM_ENDPOINT_GOOGLE: str = 'https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent'
+    
+    LLM_API_KEY_CEREBRAS: str
+    LLM_ENDPOINT_CEREBRAS: str = "https://api.cerebras.ai/v1/chat/completions"
+    
+    DEFAULT_LLM_PROVIDER: str = 'cerebras'
+    
+    LLM_PROVIDER_LIST: list = ['google', 'cerebras']
     
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: str
@@ -105,6 +115,15 @@ class Configs(BaseSettings):
 
     DATASET_ROW_THRESHOLD_BEFORE_EXPORT: int = 20
     DATASET_COLUMNS_THRESHOLD_BEFORE_EXPORT: int = 5
+    
+    MAX_DATASET_ROW_RESULT: int = 10000
+    MAX_DATASET_COLS_RESULT: int = 15
+    
+    MAX_DATAFRAME_ROWS: int = 500000
+    MAX_DATAFRAME_COLS: int = 100
+    
+    MAX_DATAFRAME_ROWS_JOIN_UTIL: int = 100000
+    MAX_DATAFRAME_COLS_JOIN_UTIL: int = 10
 
 
     # logger.py
@@ -114,6 +133,7 @@ class Configs(BaseSettings):
     # auth.py
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
+    API_KEY_ENCRYPTION_KEY: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
 
     SECRET_KEY_OTP_ENCRYPT: str = 'satuduatiga'
@@ -125,8 +145,8 @@ class Configs(BaseSettings):
     # data_transform_utils.py
     MAX_BAR_ROWS: int = 20
     MIN_LINE_POINTS: int = 5
-    MAX_VISUAL_ROWS: int = 50
-    MAX_VISUAL_COLS: int = 10 
+    MAX_VISUAL_ROWS: int = 20
+    MAX_VISUAL_COLS: int = 5 
 
     DATATYPE_CONV_SUCCESS_RATE_CLEAN_DATASET: float = 0.5 # for datatype conversion
 
@@ -137,6 +157,9 @@ class Configs(BaseSettings):
     MIN_VALID_COMMON_TASKS_SUBSEQUENT_RUNS: int = 1
     
     LLM_MODEL_LIST_GOOGLE: list = ['gemini-2.5-flash', 'gemma-3-27b-it', 'gemini-2.5-flash-lite']
+    LLM_MODEL_LIST_CEREBRAS: list = ['qwen-3-235b-a22b-instruct-2507', 'qwen-3-32b', 'gpt-oss-120b', 'zai-glm-4.7']
+    
+    
     
     MAX_TASK_COUNT: int = 20
     
@@ -147,3 +170,54 @@ def get_config() -> Configs:
     return Configs()
 
 Config = get_config()
+
+model_list_dct = {'google': Config.LLM_MODEL_LIST_GOOGLE, 
+                  'cerebras': Config.LLM_MODEL_LIST_CEREBRAS}
+
+api_key_dct = {'google': Config.LLM_API_KEY_GOOGLE, 
+               'cerebras': Config.LLM_API_KEY_CEREBRAS}
+
+PARAMS_MAP = {
+    'groupby': {
+        'template': 'Group by column(s) $columns_to_group_by and calculate $calculation of column(s) $columns_to_aggregate',
+        'columns_to_group_by': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
+        'columns_to_aggregate': {'alias': 'Column(s) to aggregate', 'type': 'multiselect'},
+        'calculation': {'alias': 'Calculation', 'type': 'multiselect', 'options': ['mean', 'median', 'min', 'max', 'count', 'size', 'sum']}
+    },
+    
+    'filter': {
+        'template': 'Filter column $column_name where condition $operator $values',
+        'column_name': {'alias': 'Filter column', 'type': 'selectbox'},
+        'operator': {'alias': 'Condition', 'type': 'selectbox', 'options': ['>', '<', '>=', '<=', '==', '!=', 'in', 'between']},
+        'values': {'alias': 'Filter value(s)', 'type': {'numerical': 'number_input', 'text': 'text_input'}}
+    },
+    
+    'get_top_or_bottom_N_entries': {
+        'template': 'Get the $order $number_of_entries entries, sorted by $sort_by_column_name. Return column(s): $return_columns',
+        'sort_by_column_name': {'alias': 'Column to sort by', 'type': 'selectbox'},
+        'order': {'alias': 'Ordering', 'type': 'radio', 'options': ['top', 'bottom']},
+        'number_of_entries': {'alias': 'Number of entries', 'type': 'number_input'},
+        'return_columns': {'alias': 'Column(s) included in result', 'type': 'multiselect'},
+    },
+    
+    'get_proportion': {
+        'template': 'Calculate the proportion/percentage of value(s) $values in column $column_name',
+        'column_name': {'alias': 'Column to get proportion of', 'type': 'selectbox'},
+        'values': {'alias': 'Value(s) to get proportion of', 'type': 'text_input'}
+    },
+    
+    'get_column_statistics': {
+        'template': 'Calculate the statistic ($calculation) for column $column_name',
+        'column_name': {'alias': 'Column to get statistics from', 'type': 'selectbox'},
+        'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['mean', 'median', 'min', 'max', 'count', 'sum']}
+    },
+    
+    'resample_data': {
+        'template': 'Change data frequency to frequency $frequency, group by $static_group_cols, and calculate $calculation of column(s) $columns_to_aggregate', 
+        'date_column': {'alias': 'Date column', 'type': 'selectbox' }, 
+        'frequency': {'alias': 'Resample frequency', 'type': 'selectbox', 'options': ["day", "week", "month", "year", "quarter"]}, 
+        'static_group_cols': {'alias': 'Column(s) to group by', 'type': 'multiselect'},
+        'columns_to_aggregate': {'alias': 'Column(s) to aggregate', 'type': 'multiselect'}, 
+        'calculation': {'alias': 'Calculation', 'type': 'selectbox', 'options': ['sum', 'mean', 'median', 'min', 'max', 'first', 'last']}
+    }
+}

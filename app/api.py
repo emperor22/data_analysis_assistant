@@ -1,20 +1,32 @@
 from fastapi import FastAPI, UploadFile, HTTPException, status, Depends, Form, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from app.services import (CsvReader, DatasetProcessorForPtOnePrompt, is_task_invalid_or_still_processing, get_background_tasks, 
-                          split_and_validate_new_prompt, save_dataset_req_id, get_task_plot_results, send_email, init_sentry, 
-                          LogRequestMiddleware, update_last_accessed_at_when_called)
-from app.tasks import get_prompt_result_task, data_processing_task, get_additional_analyses_prompt_result
+from app.services.dataset import (CsvReader, save_dataset_req_id, get_request_id_saved_dataset_dir, 
+                                  get_column_names_csv, get_row_count_csv)
+from app.services.llm import (DatasetProcessorForPtOnePrompt, check_if_api_key_valid_cerebras, check_if_api_key_valid_google, get_api_key)
+from app.services.infra import (get_background_tasks, get_task_plot_results, init_sentry, LogRequestMiddleware, update_last_accessed_at_when_called, 
+                                check_if_task_is_valid, get_email_data_and_attachment, get_col_transform_and_combination, )
+from app.services.utils import (split_and_validate_new_prompt, )
+from app.exceptions import InvalidDatasetException, FileReadException
+
+
+from app.tasks import get_prompt_result_task, data_processing_task, get_additional_analyses_prompt_result, send_email_task
 from app.crud import (PromptTableOperation, UserTableOperation, TaskRunTableOperation,
                       get_prompt_table_ops, get_task_run_table_ops, get_user_table_ops, get_user_customized_tasks_table_ops, 
                       UserCustomizedTasksTableOperation, get_redis_client)
-from app.auth import create_access_token, get_current_user, generate_random_otp, verify_otp, get_admin
-from app.schemas import (UserRegisterSchema, ExecuteAnalysesSchema, AdditionalAnalysesRequestSchema, RunInfoSchema, UploadDatasetSchema, 
-                         UserCustomizedTasksSchema, SetImportedTasksSchema, GetOTPSchema, LoginSchema, TaskProcessingRunType)
-from app.config import Config
+from app.auth import create_access_token, get_current_user, generate_random_otp, verify_otp, get_admin, encrypt_api_key
+from app.schemas import (UserRegisterSchema, ExecuteAnalysesSchema, AdditionalAnalysesRequestSchema, RunInfo, UploadDatasetSchema, 
+                         UserCustomizedTasksSchema, SetImportedTasksSchema, GetOTPSchema, LoginSchema, TaskProcessingRunType, DataTasks, 
+                         SetupAPIKeySchema, JoinDatasetSchema)
+from dataclasses import asdict
+
+
+from app.data_transform_utils import clean_column_name, join_df_duckdb
+
+from app.config import Config, api_key_dct
 
 from typing import Literal
 
@@ -37,8 +49,15 @@ from slowapi.errors import RateLimitExceeded
 
 import os
 
+from werkzeug.utils import secure_filename
+
+from pydantic import ValidationError
+
+import shutil
+
 
 # init_sentry()
+
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
@@ -69,32 +88,73 @@ async def read_root(request: Request):
 
 
 
+
+@app.post('/delete_task/{request_id}')
+@limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
+@check_if_task_is_valid
+async def delete_task(request: Request, request_id: str, current_user=Depends(get_current_user), 
+                      prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                      user_cust_tasks_table_ops: UserCustomizedTasksTableOperation = Depends(get_user_customized_tasks_table_ops), 
+                      task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
+    user_id = current_user.user_id
+    
+    await user_cust_tasks_table_ops.delete_task(user_id=user_id, request_id=request_id)
+    await task_run_table_ops.delete_task(user_id=user_id, request_id=request_id)
+    await prompt_table_ops.delete_task(user_id=user_id, request_id=request_id)
+    
+    data_dir = f'{Config.DATASET_SAVE_PATH}/{request_id}'
+    
+    if not os.path.exists(data_dir):
+        raise HTTPException(status_code=400, detail='cannot find directory for the task deletion')
+    
+    shutil.rmtree(data_dir)
+    
+    logger.info(f'task deleted: request_id {request_id}, user_id {user_id}')
+    
+    return {'detail': f'task {request_id} has been deleted'}
+    
+
 @app.post('/upload_dataset')
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
 async def upload(request: Request, file: UploadFile, upload_dataset_data: str = Form(...),
                  current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
-                 user_cust_tasks_table_ops: UserCustomizedTasksTableOperation = Depends(get_user_customized_tasks_table_ops)):
+                 user_cust_tasks_table_ops: UserCustomizedTasksTableOperation = Depends(get_user_customized_tasks_table_ops), 
+                 user_table_ops: UserTableOperation = Depends(get_user_table_ops)):
     
     try:
-        upload_dataset_data = UploadDatasetSchema.model_validate_json(upload_dataset_data)
-    except:
+        upload_dataset_data: UploadDatasetSchema = UploadDatasetSchema.model_validate_json(upload_dataset_data)
+    except ValidationError:
         raise HTTPException(status_code=422, detail="invalid parameters")
     
     run_name = upload_dataset_data.run_name
     model = upload_dataset_data.model
+    provider = upload_dataset_data.provider
     analysis_task_count = upload_dataset_data.analysis_task_count
     send_result_to_email = upload_dataset_data.send_result_to_email
-    
+        
     user_id = current_user.user_id
     user_email = current_user.email
     
-    file_reader = CsvReader(upload_file=file)
-    file_data = await run_in_threadpool(file_reader.get_dataframe_dict)
+    api_key = await get_api_key(user_table_ops=user_table_ops, user_id=user_id, provider=provider)
+
+    
+    try:
+        file_reader = CsvReader(upload_file=file)
+        file_data = await run_in_threadpool(file_reader.get_dataframe_dict)
+    except FileReadException:
+        raise HTTPException(status_code=400, detail='invalid file format')
+    except InvalidDatasetException:
+        raise HTTPException(status_code=400, detail='dataset is too big or does not have header')
+    
+    
+    
     dataset_dataframe = file_data['dataframe']
     dataset_filename = file_data['filename']
     dataset_columns_str = file_data['columns_str']
     dataset_granularity_map = file_data['granularity_map']
     dataset_id = file_data['dataset_id']
+    
+    run_type = TaskProcessingRunType.first_run_after_request.value
     
     data_processor = DatasetProcessorForPtOnePrompt(dataframe=dataset_dataframe, 
                                                 filename=dataset_filename, 
@@ -106,17 +166,29 @@ async def upload(request: Request, file: UploadFile, upload_dataset_data: str = 
     request_id = await prompt_table_ops.add_task(user_id=user_id, prompt_version=Config.DEFAULT_PROMPT_VERSION, filename=dataset_filename, 
                                             dataset_cols=dataset_columns_str, model=model, run_name=run_name)
     
-    parquet_file = await run_in_threadpool(save_dataset_req_id, request_id=request_id, dataframe=dataset_dataframe, 
-                                            save_type='original_dataset')
-    
-    run_info: RunInfoSchema = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file, 
-                                'filename': dataset_filename, 'send_result_to_email': send_result_to_email, 
-                                'email': user_email, 'run_name': run_name}
+    parquet_file = await run_in_threadpool(save_dataset_req_id, request_id=request_id, dataframe=dataset_dataframe, run_type=run_type)
 
-    _ = chain(get_prompt_result_task.s(model=model, prompt_pt_1=prompt_pt_1, task_count=analysis_task_count, dataset_id=dataset_id,
-                                    request_id=request_id, user_id=user_id, dataset_cols=literal_eval(dataset_columns_str)), 
-            data_processing_task.s(run_info=run_info, run_type=TaskProcessingRunType.first_run_after_request.value)
-            ).apply_async()
+    run_info = RunInfo(request_id=request_id, user_id=user_id, parquet_file=parquet_file, filename=dataset_filename, 
+                       send_result_to_email=send_result_to_email, email=user_email, run_name=run_name)
+    run_info = asdict(run_info)
+
+    tasks = [get_prompt_result_task.s(model=model, provider=provider, api_key=api_key, prompt_pt_1=prompt_pt_1, task_count=analysis_task_count, 
+                                      dataset_id=dataset_id, request_id=request_id, user_id=user_id, dataset_cols=literal_eval(dataset_columns_str), 
+                                      debug_prompt_and_res=True,
+                                      # mock_pt1_resp_file='resp_jsons/res_pt1_test.json', mock_pt2_resp_file='resp_jsons/res_pt2_test.json'
+                                      ), 
+             
+             data_processing_task.s(run_info=run_info, run_type=TaskProcessingRunType.first_run_after_request.value)]
+    
+    if send_result_to_email:
+        email_data = get_email_data_and_attachment(request_id, run_type, dataset_filename, run_name)
+        subject = email_data['subject']
+        body = email_data['body']
+        attachment = email_data['attachment']
+        
+        tasks.append(send_email_task.si(subject=subject, receiver=user_email, body=body, attachment_path=attachment))
+    
+    chain(*tasks).apply_async()
     
     await user_cust_tasks_table_ops.add_request_id_to_table(user_id, request_id)
     
@@ -126,156 +198,244 @@ async def upload(request: Request, file: UploadFile, upload_dataset_data: str = 
 
 
 
-@app.post('/execute_analyses')
+@app.post('/execute_analyses/{request_id}')
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
-async def execute_analyses(request: Request, execute_analyses_data: ExecuteAnalysesSchema, current_user=Depends(get_current_user), 
-                           prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
+@check_if_task_is_valid
+async def execute_analyses(request: Request, request_id: str, execute_analyses_data: str = Form(...), current_user=Depends(get_current_user), 
+                           prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)
+                           ):
     user_id = current_user.user_id
     user_email = current_user.email
-    request_id = execute_analyses_data.request_id
+    
+    run_type = TaskProcessingRunType.modified_tasks_execution.value
+    
+    data_tasks_context = {'run_type': run_type, 'request_id': request_id, 'is_from_data_tasks': True}
+    
+    try:
+        execute_analyses_data = ExecuteAnalysesSchema.model_validate_json(execute_analyses_data, context=data_tasks_context)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail=f'invalid parameters')
+
     send_result_to_email = execute_analyses_data.send_result_to_email
-    parquet_file = f'{Config.DATASET_SAVE_PATH}/{request_id}/original_dataset.parquet'
+    
+    parquet_file = get_request_id_saved_dataset_dir(request_id, run_type)
     
     dataset_filename = await prompt_table_ops.get_dataset_filename(request_id, user_id)
     run_name = await prompt_table_ops.get_run_name(request_id, user_id)
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
-    
-    run_info: RunInfoSchema = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file, 
-                                'filename': dataset_filename, 'send_result_to_email': send_result_to_email, 
-                                'email': user_email, 'run_name': run_name}
+    run_info = RunInfo(request_id=request_id, user_id=user_id, parquet_file=parquet_file, filename=dataset_filename, 
+                       send_result_to_email=send_result_to_email, email=user_email, run_name=run_name)
+    run_info = asdict(run_info)
+
     
     data_tasks = execute_analyses_data.model_dump()
-    del data_tasks['request_id']
-    del data_tasks['send_result_to_email']
+    data_tasks = DataTasks.model_validate(data_tasks, context=data_tasks_context).model_dump()
     
-    data_processing_task.delay(data_tasks_dict=data_tasks, run_info=run_info, run_type=TaskProcessingRunType.modified_tasks_execution.value)
+    tasks = [data_processing_task.s(data_tasks_dict=data_tasks, run_info=run_info, run_type=run_type)]
+
+    if send_result_to_email:
+        email_data = get_email_data_and_attachment(request_id, run_type, dataset_filename, run_name)
+        subject = email_data['subject']
+        body = email_data['body']
+        attachment = email_data['attachment']
+        
+        tasks.append(send_email_task.si(subject=subject, receiver=user_email, body=body, attachment_path=attachment))
+
+    chain(*tasks).apply_async()
     
     logger.info(f'modified task execution request added: request_id {request_id}, user_id {user_id}')
     
     return {'detail': 'analysis task executed'}
 
-@app.post('/execute_analyses_with_new_dataset')
+@app.post('/execute_analyses_with_new_dataset/{request_id}')
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
-async def execute_analyses_with_new_dataset(request: Request, file: UploadFile, execute_analyses_data: str = Form(...), 
+@check_if_task_is_valid
+async def execute_analyses_with_new_dataset(request: Request, request_id: str, file: UploadFile, execute_analyses_data: str = Form(...), 
                                             current_user=Depends(get_current_user), task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops), 
                                             prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
     user_id = current_user.user_id
     user_email = current_user.email
+    run_type = TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value
+    
+    data_tasks_context = {'run_type': run_type, 'request_id': request_id, 'is_from_data_tasks': True}
     
     try:
-        execute_analyses_data = ExecuteAnalysesSchema.model_validate_json(execute_analyses_data)
-    except:
+        execute_analyses_data = ExecuteAnalysesSchema.model_validate_json(execute_analyses_data, context=data_tasks_context)
+    except ValidationError:
         raise HTTPException(status_code=422, detail="invalid parameters")
     
-    request_id = execute_analyses_data.request_id
     send_result_to_email = execute_analyses_data.send_result_to_email
-    parquet_file = f'{Config.DATASET_SAVE_PATH}/{request_id}.parquet'
+    parquet_file = f'{Config.DATASET_SAVE_PATH}/{request_id}/new_dataset.parquet'
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail="this is an invalid task or you must run an initial analysis request first")
-    
+
     file_reader = CsvReader(upload_file=file)
     file_data = await run_in_threadpool(file_reader.get_dataframe_dict)
     dataset_dataframe = file_data['dataframe']
     dataset_columns_str = file_data['columns_str']
     dataset_filename = file_data['filename']
     
+    
+    
     original_columns_str = await prompt_table_ops.get_dataset_columns_by_id(request_id=request_id, user_id=user_id)
     
     run_name = await prompt_table_ops.get_run_name(request_id, user_id)
     
     if dataset_columns_str != original_columns_str:
-        raise HTTPException(status_code=403, details='this dataset does not have the columns from the original dataset')
+        raise HTTPException(status_code=403, detail='this dataset does not have the columns from the original dataset')
     
-    parquet_file = await run_in_threadpool(save_dataset_req_id, request_id=request_id, dataframe=dataset_dataframe, 
-                                           save_type='new_dataset')
+    parquet_file = await run_in_threadpool(save_dataset_req_id, request_id=request_id, dataframe=dataset_dataframe, run_type=run_type)
     
-    run_info: RunInfoSchema = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file, 
-                                'filename': dataset_filename, 'send_result_to_email': send_result_to_email, 
-                                'email': user_email, 'run_name': run_name}
+    run_info = RunInfo(request_id=request_id, user_id=user_id, parquet_file=parquet_file, filename=dataset_filename, 
+                       send_result_to_email=send_result_to_email, email=user_email, run_name=run_name)
+    run_info = asdict(run_info)
+
     
     data_tasks = execute_analyses_data.model_dump()
-    del data_tasks['request_id']
-    del data_tasks['send_result_to_email']
     
-    def remove_status_field_from_res(dct):
-        lst = []
+    col_transforms, col_combinations = await get_col_transform_and_combination(user_id, request_id, task_run_table_ops)
+    data_tasks['common_column_cleaning_or_transformation'] = col_transforms
+    data_tasks['common_column_combination'] = col_combinations
+    
+    data_tasks = DataTasks.model_validate(data_tasks, context=data_tasks_context).model_dump()
+  
+
+    tasks = [data_processing_task.s(data_tasks_dict=data_tasks, run_info=run_info, run_type=run_type)]
+
+    if send_result_to_email:
+        email_data = get_email_data_and_attachment(request_id, run_type, dataset_filename, run_name)
+        subject = email_data['subject']
+        body = email_data['body']
+        attachment = email_data['attachment']
         
-        for task in dct:
-            task = {i: j for i, j in task.items() if i != 'status'}
-            lst.append(task)
-        return lst
-    
-    original_col_transforms = await task_run_table_ops.get_columns_transformations_by_id(user_id=user_id, request_id=request_id)
-    original_col_transforms = json.loads(original_col_transforms['column_transforms_status'])['column_transforms']
-    original_col_transforms = remove_status_field_from_res(original_col_transforms)
-    
-    original_col_combinations = await task_run_table_ops.get_columns_combinations_by_id(user_id=user_id, request_id=request_id)
-    original_col_combinations = json.loads(original_col_combinations['column_combinations_status'])['column_combinations']
-    original_col_combinations = remove_status_field_from_res(original_col_combinations)
-    
-    data_tasks['common_column_cleaning_or_transformation'] = original_col_transforms
-    data_tasks['common_column_combination'] = original_col_combinations
-    
-    data_processing_task.delay(data_tasks_dict=data_tasks, run_info=run_info, run_type=TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value)
+        tasks.append(send_email_task.si(subject=subject, receiver=user_email, body=body, attachment_path=attachment))
+
+    chain(*tasks).apply_async()
     
     logger.info(f'modified task execution request with new dataset added: request_id {request_id}, user_id {user_id}')
     
-    return {'detail': 'analysis task executed'}  
+    return {'detail': 'analysis task executed'}
 
-@app.post('/make_additional_analyses_request')
+
+
+
+
+@app.post('/make_additional_analyses_request/{request_id}')
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
-async def make_additional_analyses_request(request: Request, additional_analyses_request_data: AdditionalAnalysesRequestSchema, 
-                                           current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
+@check_if_task_is_valid
+async def make_additional_analyses_request(request: Request, request_id: str, additional_analyses_request_data: AdditionalAnalysesRequestSchema, 
+                                           current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                                           user_table_ops: UserTableOperation = Depends(get_user_table_ops)):
     
     user_id = current_user.user_id
-    request_id = additional_analyses_request_data.request_id
+    user_email = current_user.email
     model = additional_analyses_request_data.model
+    provider = additional_analyses_request_data.provider
     new_tasks_prompt = additional_analyses_request_data.new_tasks_prompt
+    send_result_to_email = additional_analyses_request_data.send_result_to_email
+    
+    run_type = TaskProcessingRunType.additional_analyses_request.value
+    
+    api_key = await get_api_key(user_table_ops=user_table_ops, user_id=user_id, provider=provider)
     
     new_tasks_prompt = split_and_validate_new_prompt(new_tasks_prompt)
     
     if not new_tasks_prompt:
         raise HTTPException(status_code=403, detail=f"the new tasks request prompt does not meet the requirements")
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
-    
     additional_analyses_prompt_res = await prompt_table_ops.get_additional_analyses_prompt_result(request_id, user_id)
     
     if additional_analyses_prompt_res is not None: # if user already run additional analyses on this req_id previously
         raise HTTPException(status_code=400, detail=f"can only execute one additional analyses request for one dataset")
     
-    new_tasks_prompt = new_tasks_prompt.split('\n')
+    parquet_file = get_request_id_saved_dataset_dir(request_id, run_type)
+    
+    dataset_filename = await prompt_table_ops.get_dataset_filename(request_id, user_id)
+    run_name = await prompt_table_ops.get_run_name(request_id, user_id)
 
-    parquet_file = f'{Config.DATASET_SAVE_PATH}/{request_id}.parquet'
+    run_info = RunInfo(request_id=request_id, user_id=user_id, parquet_file=parquet_file, filename=dataset_filename, 
+                       send_result_to_email=send_result_to_email, email=user_email, run_name=run_name)
+    run_info = asdict(run_info)
+
     
-    run_info = {'request_id': request_id, 'user_id': user_id, 'parquet_file': parquet_file}
+    tasks = [get_additional_analyses_prompt_result.s(model=model, provider=provider, api_key=api_key, new_tasks_prompt=new_tasks_prompt, request_id=request_id, user_id=user_id),
+
+            data_processing_task.s(run_info=run_info, run_type=TaskProcessingRunType.additional_analyses_request.value)]
     
-    _ = chain(get_additional_analyses_prompt_result.s(model=model, new_tasks_prompt=new_tasks_prompt, request_id=request_id, user_id=user_id),
-              data_processing_task.s(run_info=run_info, run_type=TaskProcessingRunType.additional_analyses_request.value)
-              ).apply_async()
+    if send_result_to_email:
+        email_data = get_email_data_and_attachment(request_id, run_type, dataset_filename, run_name)
+        subject = email_data['subject']
+        body = email_data['body']
+        attachment = email_data['attachment']
+        
+        tasks.append(send_email_task.si(subject=subject, receiver=user_email, body=body, attachment_path=attachment))
+
+    chain(*tasks).apply_async()
+    
     
     logger.info(f'additional analyses request added: request_id {request_id}, user_id {user_id}')
     
     return {'detail': 'additional analyses request executed'}
 
+
+
+
+@app.post('/join_dataset')
+@limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
+async def join_dataset(request: Request, dataset_1: UploadFile, dataset_2: UploadFile, join_dataset_data: str = Form(...), 
+                       current_user=Depends(get_current_user)):
+    try:
+        join_dataset_data = JoinDatasetSchema.model_validate_json(join_dataset_data)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail="invalid parameters")
+    
+    join_keys = join_dataset_data.join_keys
+    join_method = join_dataset_data.join_method
+    
+    dataset_1_cols = get_column_names_csv(dataset_1)
+    dataset_2_cols = get_column_names_csv(dataset_2)
+    
+    dataset_1_row_count = get_row_count_csv(dataset_1)
+    dataset_2_row_count = get_row_count_csv(dataset_2)
+    
+    left_on_cols_in_dataset_1_cols = all([i[0] in dataset_1_cols for i in join_keys])
+    right_on_cols_in_dataset_2_cols = all([i[1] in dataset_2_cols for i in join_keys])
+    
+    if not (left_on_cols_in_dataset_1_cols and right_on_cols_in_dataset_2_cols):
+        raise HTTPException(status_code=400, detail='all join columns must exist in both datasets')
+    
+    dataset_1_size_too_big = dataset_1_row_count > Config.MAX_DATAFRAME_ROWS_JOIN_UTIL or len(dataset_1_cols) > Config.MAX_DATAFRAME_COLS_JOIN_UTIL
+    dataset_2_size_too_big = dataset_2_row_count > Config.MAX_DATAFRAME_ROWS_JOIN_UTIL or len(dataset_2_cols) > Config.MAX_DATAFRAME_COLS_JOIN_UTIL
+    
+    if dataset_1_size_too_big or dataset_2_size_too_big:
+        raise HTTPException(status_code=400, detail='the datasets dont meet the size criteria')
+
+    
+    dataset_1_reader = CsvReader(upload_file=dataset_1)
+    dataset_1_data = await run_in_threadpool(dataset_1_reader.get_dataframe_dict)
+    dataset_1_df = dataset_1_data['dataframe']
+    
+    dataset_2_reader = CsvReader(upload_file=dataset_2)
+    dataset_2_data = await run_in_threadpool(dataset_2_reader.get_dataframe_dict)
+    dataset_2_df = dataset_2_data['dataframe']
+    
+    join_keys_clean = [(clean_column_name(i), clean_column_name(j)) for i, j in join_keys]
+    
+    joined_df = await run_in_threadpool(join_df_duckdb, df1=dataset_1_df, df2=dataset_2_df, join_keys=join_keys_clean, how=join_method)
+    joined_df_buffer = joined_df.to_csv(index=False, compression='gzip')
+    
+    content = joined_df_buffer.getvalue()
+    headers = {'Content-Disposition': 'attachment; filename="result_dataset.csv.gz"'}
+
+    return Response(content=content, headers=headers, media_type="application/gzip")
+
     
 @app.get('/get_original_tasks_by_id/{request_id}')
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
 @update_last_accessed_at_when_called
+@check_if_task_is_valid
 async def get_original_tasks_by_id(request: Request, request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
                                    task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops), redis_client=Depends(get_redis_client)):
     user_id = current_user.user_id
-
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
 
     res = await task_run_table_ops.get_original_tasks_by_id(user_id, request_id)
     
@@ -290,13 +450,11 @@ async def get_original_tasks_by_id(request: Request, request_id: str, current_us
 
 @app.get('/get_modified_tasks_by_id/{request_id}')
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
+@update_last_accessed_at_when_called
+@check_if_task_is_valid
 async def get_modified_tasks_by_id(request: Request, request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
-                                   task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
+                                   task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops), redis_client=Depends(get_redis_client)):
     user_id = current_user.user_id
-
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
 
     res = await task_run_table_ops.get_modified_tasks_by_id(user_id, request_id)
     
@@ -309,13 +467,13 @@ async def get_modified_tasks_by_id(request: Request, request_id: str, current_us
 
 @app.get('/get_col_info_by_id/{request_id}')
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
-async def get_col_info_by_id(request: Request, request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
-                             task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
+@update_last_accessed_at_when_called
+@check_if_task_is_valid
+async def get_col_info_by_id(request: Request, request_id: str, current_user=Depends(get_current_user), 
+                             prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                             task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops), 
+                             redis_client=Depends(get_redis_client)):
     user_id = current_user.user_id
-
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
 
     res = await task_run_table_ops.get_columns_info_by_id(user_id, request_id)
     
@@ -326,14 +484,14 @@ async def get_col_info_by_id(request: Request, request_id: str, current_user=Dep
 
 @app.get('/get_dataset_snippet_by_id/{request_id}')
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
-async def get_dataset_snippet_by_id(request: Request, request_id: str, current_user=Depends(get_current_user), prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
-                                    task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops)):
+@update_last_accessed_at_when_called
+@check_if_task_is_valid
+async def get_dataset_snippet_by_id(request: Request, request_id: str, current_user=Depends(get_current_user), 
+                                    prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops), 
+                                    task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops), 
+                                    redis_client=Depends(get_redis_client)):
     user_id = current_user.user_id
 
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, prompt_table_ops=prompt_table_ops)
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
-    
     res = await task_run_table_ops.get_dataset_snippet_by_id(user_id, request_id)
 
     if not res:
@@ -350,7 +508,7 @@ async def get_request_ids(request: Request, current_user=Depends(get_current_use
     res = await prompt_table_ops.get_request_ids_by_user(user_id)
     
     if not res:
-        raise HTTPException(status_code=404, detail=f"not authenticated or cannot find any request ids")
+        raise HTTPException(status_code=404, detail=f"cannot find any request ids")
     
     return {'request_ids': res}
 
@@ -395,47 +553,22 @@ async def manage_user_customized_tasks(request: Request, user_cust_tasks_schema:
         tasks = json.dumps(tasks)
         await user_cust_tasks_table_ops.update_customized_tasks(user_id, request_id, slot, tasks)
         return {'detail': 'update customized tasks operation successful'}
-        
-
-    
 
 
-@app.post('/set_imported_task_ids')
+@app.get('/download_excel_result/{task}/{request_id}/{task_id}')
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
-async def set_imported_task_ids(request: Request, set_imported_tasks_schema: SetImportedTasksSchema, current_user=Depends(get_current_user), 
-                                user_cust_tasks_table_ops: UserCustomizedTasksTableOperation = Depends(get_user_customized_tasks_table_ops)):
-    user_id = current_user.user_id
-    
-    request_id = set_imported_tasks_schema.request_id
-    task_ids = set_imported_tasks_schema.task_ids
-    
-    await user_cust_tasks_table_ops.set_imported_tasks(user_id, request_id, task_ids)
-    
-    return {'detail': 'set imported tasks operation successful'}
-
-@app.get('/fetch_imported_task_ids/{request_id}')
-@limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
-async def fetch_imported_task_ids(request: Request, request_id: str, current_user=Depends(get_current_user),
-                                  user_cust_tasks_table_ops: UserCustomizedTasksTableOperation = Depends(get_user_customized_tasks_table_ops)):
-    user_id = current_user.user_id
-    
-    res = await user_cust_tasks_table_ops.fetch_imported_tasks(user_id, request_id)
-    
-    return {'imported_task_ids': res}
-
-
-@app.get('/download_excel_result/{request_id}/{task_id}')
-async def download_excel_result(request_id: str, task_id: int, current_user=Depends(get_current_user), 
+@check_if_task_is_valid
+async def download_excel_result(request: Request, task: str, request_id: str, task_id: int, current_user=Depends(get_current_user), 
                                 prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops)):
-    user_id = current_user.user_id
-    task_still_in_initial_request_process = await is_task_invalid_or_still_processing(request_id=request_id, user_id=user_id, 
-                                                                                      prompt_table_ops=prompt_table_ops)
+    if task not in ['original_tasks', 'customized_tasks']:
+        raise HTTPException(status_code=400, detail='not a valid task category')
     
-    if task_still_in_initial_request_process:
-        raise HTTPException(status_code=403, detail=f"this is an invalid task or you must run an initial analysis request first")
+    # task_id = secure_filename(str(task_id))
+    # request_id = secure_filename(request_id)
 
-    file_path = f'{Config.DATASET_SAVE_PATH}/{request_id}/customized_tasks/artifacts/{task_id}.xlsx'
-    logger.debug(file_path)
+    
+    file_path = f'{Config.DATASET_SAVE_PATH}/{request_id}/{task}/artifacts/{task_id}.xlsx'
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=400, detail='the requested file does not exist')
     
@@ -448,31 +581,32 @@ async def download_excel_result(request_id: str, task_id: int, current_user=Depe
 
 ################### USER ROUTES ###################
 
-
 @app.post('/get_otp')
 async def get_otp(get_otp_data: GetOTPSchema, background_tasks = Depends(get_background_tasks), user_table_ops: UserTableOperation = Depends(get_user_table_ops)):
     username = get_otp_data.username
+
     user = await user_table_ops.get_user(username)
-    
+
     if not user:
         logger.warning(f'user {username} does not exist in db and tried to log in')
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+        raise HTTPException(status_code=401, detail="Invalid credentials.")
+
     
     if user['last_otp_request'] is not None:
         
         if datetime.now(timezone.utc) < user['last_otp_request'] + timedelta(minutes=1): # if one minute has not passed since the last otp request
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="You need to wait one minute before requesting another OTP")
+            raise HTTPException(status_code=429, detail="You need to wait one minute before requesting another OTP")
     
     raw_otp, encrypted_otp = generate_random_otp()
     otp_expire = datetime.now(timezone.utc) + timedelta(minutes=Config.OTP_EXPIRE_MINUTES)
     
     await user_table_ops.update_otp(username=username, otp=encrypted_otp, otp_expire=otp_expire)
     
-    recipients = [user['email']]
+    receiver = user['email']
     subject = 'OTP for Data Analysis Assistant app'
     body = f'Your OTP is {raw_otp}'
     
-    background_tasks.add_task(send_email, subject, recipients, body)
+    send_email_task.delay(subject=subject, receiver=receiver, body=body)
     
     return {'detail': 'otp has been sent'}
     
@@ -487,10 +621,10 @@ async def login(request: Request, login_data: LoginSchema, user_table_ops: UserT
 
     if not user or not verify_otp(login_data.otp, user_otp):
         logger.warning(f'user {login_data.username} failed to log in')
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username")
+        raise HTTPException(status_code=401, detail="Incorrect username")
     
     if datetime.now(timezone.utc) > user['otp_expire']:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Expired OTP. Please generate a new one.")
+        raise HTTPException(status_code=401, detail="Expired OTP. Please generate a new one.")
     
     access_token = create_access_token(data={"sub": username}, 
                                        expire_minutes=Config.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -526,16 +660,43 @@ async def register_user(request: Request, user_register_data: UserRegisterSchema
     except IntegrityError:
         logger.warning(f'{username}/{email} failed to register because of conflicting username/email.')
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=409,
             detail=f'username {username} or email {email} already exists.'
         )
         
-    except Exception as e:
-        logger.exception(e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="there is an internal error."
-        )
+
+
+@app.post('/setup_api_key')
+@limiter.limit(Config.RATE_LIMIT_REGISTER)
+async def setup_api_key(request: Request, api_key_data: SetupAPIKeySchema, current_user=Depends(get_current_user), user_table_ops: UserTableOperation = Depends(get_user_table_ops)):
+    provider = api_key_data.provider
+    key = api_key_data.key
+    user_id = current_user.user_id
+
+    # delete key if no key is specified
+    if len(key) == 0:
+        await user_table_ops.delete_api_key(user_id, provider)
+        return {'detail': 'api key deleted'}
+    
+    validate_func_dct = {'google': check_if_api_key_valid_google, 'cerebras': check_if_api_key_valid_cerebras}
+    check_if_api_key_valid = validate_func_dct[provider]
+    
+    check_result = await check_if_api_key_valid(key)
+    
+    if check_result == 'INVALID_KEY':
+        raise HTTPException(status_code=400, detail='invalid api key')
+    
+    if check_result == 'TRY_LATER':
+        raise HTTPException(status_code=400, detail='cant determine validity now. try again later.')
+    
+    encrypted_key = encrypt_api_key(key).decode()
+    
+    await user_table_ops.add_api_key(user_id=user_id, key=encrypted_key, provider=provider)
+    
+    logger.info(f'user added api key: user_id {user_id}')
+    
+    return {'detail': 'api key setup successful'}
+    
         
         
 

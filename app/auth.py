@@ -6,6 +6,7 @@ from jwt.exceptions import InvalidTokenError
 import jwt
 import asyncio
 from passlib.context import CryptContext
+from cryptography.fernet import Fernet
 
 from datetime import datetime, timezone, timedelta
 
@@ -21,6 +22,10 @@ import hashlib
 import base64
 
 from app.logger import logger
+
+
+from cryptography.fernet import Fernet
+
 
 
 
@@ -76,6 +81,15 @@ def get_admin(current_user=Depends(get_current_user)):
     if not user_email == Config.ADMIN_EMAIL:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="you need admin privileges to access this")
     return
+
+
+FERNET = Fernet(Config.API_KEY_ENCRYPTION_KEY.encode())
+
+def encrypt_api_key(key):
+    return FERNET.encrypt(key.encode())
+
+def decrypt_api_key(encrypted_key):
+    return FERNET.decrypt(encrypted_key).decode()
 
 
 

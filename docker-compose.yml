@@ -67,11 +67,11 @@ services:
     restart: always
 
 
-  data_processing_queue:
+  cpu_tasks_queue:
     build:
       context: .
       dockerfile: ./app/Dockerfile
-    command: celery -A app.tasks worker --loglevel=info -P solo -Q data_processing_queue
+    command: celery -A app.tasks worker --loglevel=info -P solo -Q cpu_tasks_queue
     env_file:
       - .env
     volumes:
@@ -85,11 +85,11 @@ services:
     restart: always
 
 
-  get_prompt_res_queue:
+  io_tasks_queue:
     build:
       context: .
       dockerfile: ./app/Dockerfile
-    command: celery -A app.tasks worker --loglevel=info -P gevent --concurrency 10 -Q get_prompt_res_queue
+    command: celery -A app.tasks worker --loglevel=info -P gevent --concurrency 10 -Q io_tasks_queue
     env_file:
       - .env
     volumes:

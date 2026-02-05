@@ -1,12 +1,12 @@
-# Byte-compiled / optimized / DLL files
+
 __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
+
 *.so
 
-# Distribution / packaging
+
 .Python
 build/
 dist/
@@ -14,16 +14,16 @@ wheels/
 *.egg-info/
 *.egg
 
-# Installer logs
+
 pip-log.txt
 pip-delete-this-file.txt
 
-# Unit test / coverage reports
+
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Development / testing environment
+
 .venv/
 env/
 venv/
@@ -31,25 +31,20 @@ ENV/
 env.bak/
 venv.bak/
 
-# Debugging and editor files
-# Common editors and IDEs (e.g., VS Code, PyCharm)
+
 .idea/
 .vscode/
 *.swp
 *~
 .DS_Store
 
-# Virtual environment (specific to some tools, but good to include)
-# Use the ones above like .venv/ or venv/ for general venvs
 
-# Sphinx documentation (if used)
+
 docs/_build/
 
-# Jupyter Notebook files (if used)
+
 .ipynb_checkpoints
 
-# Miscellaneous
-# Logs and databases
 *.log
 *.sqlite3
 *.sqlite

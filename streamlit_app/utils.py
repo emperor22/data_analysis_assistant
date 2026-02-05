@@ -98,38 +98,30 @@ def include_auth_header(func):
         else:
             kwargs['headers'] = auth_header
         
-        try:
-            res = func(*args, **kwargs)
-            
-            if res.status_code == 422:
-                try:
-                    error_details = res.json()
-                    print(error_details)
-                    return
-                except requests.exceptions.JSONDecodeError: 
-                    print(res.text)
-                    return
 
-            if res.status_code == 401:
-                show_unauthorized_error_and_redirect_to_login()
-                
-            if res.status_code == 404:
-                return None
+        res = func(*args, **kwargs)
+        
+        
+        if res.status_code == 200:
+            try:
+                return res.json()
+            except requests.exceptions.JSONDecodeError:
+                return res
+        
+        if res.status_code == 422:
+            try:
+                error_details = res.json()
+                print(error_details)
+                return
+            except requests.exceptions.JSONDecodeError: 
+                print(res.text)
+                return
             
-            if res.status_code == 400:
-                return None
 
-            if res.status_code == 200:
-                try:
-                    return res.json()
-                except requests.exceptions.JSONDecodeError:
-                    return res
-            
-            raise Exception(f'request returned an error: status code: {res.status_code}')
-                
-        except Exception as e:
-            raise e
-            st.error(f'An error occurred during the request: {e}')
+        if res.status_code == 401:
+            show_unauthorized_error_and_redirect_to_login()
+                        
+        st.error(f"{res.json()['detail']}")
         
     return wrapper
     
@@ -158,23 +150,7 @@ def manage_customized_tasks(request_id, operation: Literal['fetch', 'delete', 'u
     
     return res
 
-@include_auth_header
-def set_imported_task_ids(request_id, task_ids, headers=None):
-    url = f'{URL}/set_imported_task_ids'
-    
-    data = {'request_id': request_id, 'task_ids': task_ids}
-    
-    res = requests.post(url, json=data, headers=headers)
-    
-    return res
 
-@include_auth_header
-def fetch_imported_task_ids(request_id, headers=None):
-    url = f'{URL}/fetch_imported_task_ids/{request_id}'
-    
-    res = requests.get(url, headers=headers)
-    
-    return res
 
 @include_auth_header
 def get_modified_tasks_by_id(task_id, headers=None):
@@ -199,7 +175,7 @@ def get_task_ids_by_user(headers=None):
     
     return res
 
-def render_task_ids():
+def render_request_ids():
     task_ids = get_task_ids_by_user()
     col1, col2 = st.columns([12, 1])
     
@@ -220,9 +196,17 @@ def render_task_ids():
         if not task_ids_select:
             st.stop()
     
-
-    
     return task_ids_select
+
+def render_delete_task_button(task_id):
+    if st.button('Delete task'):
+        
+        res = delete_task(task_id)
+        get_task_ids_by_user.clear() # clear task ids cache to reflect latest list of tasks
+        
+        st.success('Task deleted')
+        st.rerun()
+        
     
 
 @include_auth_header
@@ -245,21 +229,21 @@ def get_dataset_snippet_by_id(task_id, headers=None):
 
 
 @include_auth_header
-def send_tasks_to_process(data_tasks, task_id, send_result_to_email=False, headers=None):
-    url = f'{URL}/execute_analyses'
+def send_tasks_to_process(data_tasks, request_id, send_result_to_email, headers=None):
+    url = f'{URL}/execute_analyses/{request_id}'
     
-    data_tasks['request_id'] = task_id
     data_tasks['send_result_to_email'] = send_result_to_email
     
-    res = requests.post(url, verify=False,  data=json.dumps(data_tasks), headers=headers)
+    data = {'execute_analyses_data': json.dumps(data_tasks)}
+    
+    res = requests.post(url, verify=False,  data=data, headers=headers)
     
     return res
 
 @include_auth_header
-def send_tasks_to_process_w_new_dataset(uploaded_file, data_tasks, task_id, send_result_to_email=False, headers=None):
-    url = f'{URL}/execute_analyses_with_new_dataset'
+def send_tasks_to_process_w_new_dataset(uploaded_file, data_tasks, request_id, send_result_to_email=False, headers=None):
+    url = f'{URL}/execute_analyses_with_new_dataset/{request_id}'
     
-    data_tasks['request_id'] = task_id
     data_tasks['send_result_to_email'] = send_result_to_email
     
     data = {'execute_analyses_data': json.dumps(data_tasks)}
@@ -272,11 +256,13 @@ def send_tasks_to_process_w_new_dataset(uploaded_file, data_tasks, task_id, send
     return res
 
 @include_auth_header
-def make_analysis_request(name, uploaded_file, model, task_count, send_result_to_email, headers=None):
+def make_analysis_request(name, uploaded_file, model,task_count, send_result_to_email, headers=None):
     url = f'{URL}/upload_dataset'
     file = {'file': (uploaded_file.name, uploaded_file.getvalue())}
+    
+    provider, model = model.split(':')
 
-    params = {'run_name': name, 'model': model, 'analysis_task_count': str(task_count), 'send_result_to_email': send_result_to_email}
+    params = {'run_name': name, 'model': model, 'provider': provider, 'analysis_task_count': str(task_count), 'send_result_to_email': send_result_to_email}
     data = {'upload_dataset_data': json.dumps(params)}
 
     res = requests.post(url, verify=False, files=file, headers=headers, data=data)
@@ -284,20 +270,49 @@ def make_analysis_request(name, uploaded_file, model, task_count, send_result_to
     return res
 
 @include_auth_header
-def download_excel_result(request_id, task_id, headers=None):
-    url = f'{URL}/download_excel_result/{request_id}/{task_id}'
+def download_excel_result(request_id, task_id, task, headers=None):
+    url = f'{URL}/download_excel_result/{task}/{request_id}/{task_id}'
     
     res = requests.get(url, headers=headers)
     
     return res
 
+def render_excel_download_button(request_id, task_id, task: Literal['original_tasks', 'customized_tasks']):
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button('Download excel result', key=f'download_button_{request_id}_{task_id}'):
+            res = download_excel_result(request_id=request_id, task_id=task_id, task=task)
+            
+            if res is None:
+                st.error('Cannot download excel result')
+            else:
+                with col2:
+                    st.download_button('Download', data=res.content, file_name=f'{task}_req_id_{request_id}_task_id_{task_id}.xlsx')
+
 @include_auth_header
 def make_additional_analyses_request(model, new_tasks_prompt, request_id, headers=None):
-    url = f'{URL}/make_additional_analyses_request'
-
-    data = {'model': model, 'new_tasks_prompt': new_tasks_prompt, 'request_id': request_id}
+    url = f'{URL}/make_additional_analyses_request/{request_id}'
+    provider, model = model.split(':')
+    data = {'model': model, 'provider': provider, 'new_tasks_prompt': new_tasks_prompt}
 
     res = requests.post(url, verify=False, headers=headers, data=json.dumps(data))
+    
+    return res
+
+@include_auth_header
+def delete_task(request_id, headers=None):
+    url = f'{URL}/delete_task/{request_id}'
+    
+    res = requests.post(url, verify=False, headers=headers)
+    
+    return res
+
+@include_auth_header
+def setup_api_key(provider, key, headers=None):
+    url = f'{URL}/setup_api_key'
+    
+    data = {'key': key, 'provider': provider}
+    res = requests.post(url, verify=False, json=data, headers=headers)
     
     return res
 
@@ -420,7 +435,7 @@ def render_modified_task_box(request_id, param_info, all_columns, step_idx, step
         return [val.strip() for val in new_value.split(';')]
             
     
-def render_original_task_expander(task, task_idx, plots_dct) :   
+def render_original_task_expander(request_id, task, task_idx, plots_dct, task_mode) :   
     task_status = task['status']
     
     status_in_label = f' ({task_status.split()[0].upper()})' if task_status.startswith('failed') else ''
@@ -440,13 +455,19 @@ def render_original_task_expander(task, task_idx, plots_dct) :
         st.write('---')
         
         if 'failed' not in task_status:
-            st.write('**Result**')
-            st.write(pd.DataFrame(task['result']))
-
             task_id = str(task['task_id'])
-            if task_id in plots_dct:
-                st.write('**Chart**')
-                display_b64_encoded_image(plots_dct[task_id])
+            
+            if 'big' in task_status:
+                render_excel_download_button(request_id=request_id, task_id=task_id, task=task_mode)
+                
+            else:
+                st.write('**Result**')
+                st.write(pd.DataFrame(task['result']))
+
+                
+                if task_id in plots_dct:
+                    st.write('**Chart**')
+                    display_b64_encoded_image(plots_dct[task_id])
         
     
 

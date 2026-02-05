@@ -23,19 +23,18 @@ from sqlalchemy.orm import declarative_base
 import redis
 
 from app.config import Config
+from app.services.utils import get_current_time_utc
 
 import json
 
 
-base_engine = create_async_engine(Config.DATABASE_URL_ASYNC)
-base_engine_sync = create_engine(Config.DATABASE_URL_SYNC)
+base_engine = create_async_engine(Config.DATABASE_URL_ASYNC, pool_size=10, max_overflow=2, pool_recycle=300, pool_pre_ping=True, pool_use_lifo=True)
+base_engine_sync = create_engine(Config.DATABASE_URL_SYNC, pool_size=10, max_overflow=2, pool_recycle=300, pool_pre_ping=True, pool_use_lifo=True)
 
 SessionLocal = async_sessionmaker(bind=base_engine, expire_on_commit=False, class_=AsyncSession, autoflush=False)
 
 Base = declarative_base()
 
-def get_current_time_utc():
-    return datetime.now(timezone.utc)
 
 class AppUsers(Base):
     __tablename__ = 'app_user'
@@ -49,6 +48,8 @@ class AppUsers(Base):
     otp_expire = Column(DateTime(timezone=True), nullable=True)
     last_otp_request = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True))
+    api_key_cerebras = Column(String)
+    api_key_google = Column(String)
 
 class PromptAndResult(Base):
     __tablename__ = 'prompt_and_result'
@@ -67,6 +68,7 @@ class PromptAndResult(Base):
     status = Column(String)
     celery_task_id = Column(String)
     created_at = Column(DateTime(timezone=True))
+    rate_limit_retry_count = Column(Integer, nullable=True, server_default=text('0'))
     last_accessed_at = Column(DateTime(timezone=True))
     
 class TaskRun(Base):
@@ -131,9 +133,6 @@ class BlacklistedDatasetsTableOperation:
     def increment_failed_attempt(self, dataset_id):
         cur_failed_attempt = self.get_failed_attempt_count(dataset_id)
         
-        if cur_failed_attempt == Config.FAILED_ATTEMPT_THRESHOLD_FOR_BLACKLIST:
-            self.mark_as_blacklisted(dataset_id)
-        
         query = f'''update {self.table_name}
                    set failed_attempts = :new_failed_attempts
                    where dataset_id = :dataset_id'''
@@ -177,8 +176,18 @@ class UserCustomizedTasksTableOperation:
         self.conn = conn
         self.table_name = 'user_customized_tasks'
         
+    async def delete_task(self, user_id, request_id):
+        query = f'''delete from {self.table_name} where user_id = :user_id and request_id = :request_id'''
+        
+        await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        
     async def fetch_customized_tasks(self, user_id, request_id, slot):
         col = f'saved_tasks_slot_{slot}'
+        allowed_cols = ['saved_tasks_slot_1', 'saved_tasks_slot_2', 'saved_tasks_slot_3']
+        
+        if col not in allowed_cols:
+            return None
+        
         query = f'''select {col} from {self.table_name} where user_id = :user_id and request_id = :request_id'''
 
         res = await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
@@ -202,6 +211,11 @@ class UserCustomizedTasksTableOperation:
         
     async def update_customized_tasks(self, user_id, request_id, slot, tasks):
         col = f'saved_tasks_slot_{slot}'
+        allowed_cols = ['saved_tasks_slot_1', 'saved_tasks_slot_2', 'saved_tasks_slot_3']
+        
+        if col not in allowed_cols:
+            return None
+        
         query = f'''update {self.table_name} set {col} = :tasks where user_id = :user_id and request_id = :request_id'''
 
         await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id, 'tasks': tasks})
@@ -212,7 +226,7 @@ class UserCustomizedTasksTableOperation:
         
     async def set_imported_tasks(self, user_id, request_id, imported_task_ids: list):
         imported_task_ids = json.dumps(imported_task_ids)
-        query = '''update {self.table_name}set imported_original_tasks = :imported_task_ids where user_id = :user_id and request_id = :request_id'''
+        query = f'''update {self.table_name} set imported_original_tasks = :imported_task_ids where user_id = :user_id and request_id = :request_id'''
         
         await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id, 'imported_task_ids': imported_task_ids})
         
@@ -224,12 +238,40 @@ class UserCustomizedTasksTableOperation:
         
         
 class UserTableOperation:
-    def __init__(self, conn):
+    def __init__(self, conn=None, conn_sync=None):
         self.conn = conn
+        self.conn_sync = conn_sync
         self.table_name = 'app_user'
         
+    async def add_api_key(self, user_id, key, provider):
+        if provider not in Config.LLM_PROVIDER_LIST:
+            return None
+        
+        query = f'''update {self.table_name} set api_key_{provider} = :key where id = :user_id'''
+        
+        await self.conn.execute(text(query), {'key': key, 'user_id': user_id})
+    
+    async def delete_api_key(self, user_id, provider):
+        if provider not in Config.LLM_PROVIDER_LIST:
+            return None
+        
+        query = f'''update {self.table_name} set api_key_{provider} = NULL where id = :user_id'''
+        
+        await self.conn.execute(text(query), {'user_id': user_id})
+    
+    async def get_api_key(self, user_id, provider):
+        if provider not in Config.LLM_PROVIDER_LIST:
+            return None
+        
+        col = f'api_key_{provider}'
+        query = f'''select {col} from {self.table_name} where id = :user_id'''
+        res = await self.conn.execute(text(query), {'user_id': user_id})
+        res = res.fetchone()
+        
+        return res._mapping[col] if res else None
+    
     async def get_user(self, username):
-        query = f'''select * from {self.table_name} where username = :username'''
+        query = f'''select username, id, email, last_otp_request, otp, otp_expire from {self.table_name} where username = :username'''
 
         res = await self.conn.execute(text(query), {'username': username})
         res = res.fetchone()
@@ -275,12 +317,15 @@ class PromptTableOperation:
         
 
         return req_id
+    
+    async def delete_task(self, user_id, request_id):
+        query = f'''delete from {self.table_name} where user_id = :user_id and id = :request_id'''
+        
+        await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
             
     # is a synchronous function because will be used in gevent worker
     def insert_prompt_result_sync(self, request_id: str, prompt_result: str):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
-        
+
         query = f'''update {self.table_name}
                    set prompt_result = :prompt_result
                    where id = :request_id'''
@@ -296,8 +341,7 @@ class PromptTableOperation:
         return res._mapping if res and res.prompt_result is not None else None
         
     def get_prompt_result_sync(self, request_id: str, user_id: str):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         query = f'''select prompt_result from {self.table_name} where user_id = :user_id and id = :request_id'''
 
         res = self.conn_sync.execute(text(query), {'request_id': request_id, 'user_id': user_id})
@@ -305,8 +349,7 @@ class PromptTableOperation:
         return res._mapping if res and res.prompt_result is not None else None
 
     def insert_additional_analyses_prompt_result_sync(self, request_id: str, additional_analyses_prompt_result: str):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
                    set additional_analyses_prompt_result = :additional_analyses_prompt_result
@@ -323,8 +366,7 @@ class PromptTableOperation:
         return res._mapping if res and res.additional_analyses_prompt_result is not None else None
         
     def change_request_status_sync(self, request_id, status):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
                    set status = :status
@@ -367,23 +409,49 @@ class PromptTableOperation:
         res = res.fetchone()
         return res._mapping['dataset_cols'] if res and res.dataset_cols is not None else None
     
-    def update_last_accessed_column(self, update_dct):
+    def update_last_accessed_column_sync(self, update_dct):
+        
+        
         update_dct = {i: datetime.strptime(j, '%Y-%m-%d') for i, j in update_dct.items()} # update dct is {req_id: date_str}
         for req_id, date in update_dct.items():
-            q = f'''update {self.table_name} set last_accessed_at = :date where request_id = :req_id'''
+            q = f'''update {self.table_name} set last_accessed_at = :date where id = :req_id'''
             self.conn_sync.execute(text(q), {'date': date, 'req_id': req_id})
             
         self.conn_sync.commit()
         
-    def get_least_accessed_request_ids(self, thres_days):
+    def get_least_accessed_request_ids_sync(self, thres_days):
+        
+        
         date_filt = (date.today() - timedelta(days=thres_days)).srtftime('%Y-%m-%d')
         
-        query = f'''select request_id from {self.table_name} where last_accessed_at < :date_filt'''
+        query = f'''select id from {self.table_name} where last_accessed_at < :date_filt'''
         
         res = self.conn_sync.execute(text(query), {'date_filt': date_filt})
+        res = res.fetchall()
+        return res._mapping['id'] if res else None
+    
+    def increment_rate_limit_retry_count_sync(self, user_id, request_id):
         
-        return res._mapping['request_id'] if res else None
+        current_retry_count = self.check_rate_limit_retry_count(user_id, request_id)
         
+        query = f'''update {self.table_name} set rate_limit_retry_count = :new_count where user_id = :user_id and id = :request_id'''
+        self.conn_sync.execute(text(query), {'user_id': user_id, 'request_id': request_id, 'new_count': current_retry_count + 1})
+        self.conn_sync.commit()
+    
+    def check_rate_limit_retry_count(self, user_id, request_id):
+        
+        query = f'''select rate_limit_retry_count from {self.table_name} where user_id = :user_id and id = :request_id'''
+        res = self.conn_sync.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        res = res.fetchone()
+        
+        return res._mapping['rate_limit_retry_count'] if res else 0
+    
+    def reset_rate_limit_retry_count_sync(self, user_id, request_id):
+        
+        
+        query = f'''update {self.table_name} set rate_limit_retry_count = 0 where user_id = :user_id and id = :request_id'''
+        self.conn_sync.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+        self.conn_sync.commit()
         
 class TaskRunTableOperation:
     def __init__(self, conn=None, conn_sync=None):
@@ -391,9 +459,20 @@ class TaskRunTableOperation:
         self.conn_sync = conn_sync
         self.table_name = 'task_run'
     
+    async def empty_modified_task_result(self, request_id: str, user_id: str):
+        query = f'''update {self.table_name} 
+                    set common_tasks_w_result = NULL
+                    where user_id = :user_id and request_id = :request_id'''
+                    
+        await self.conn.execute(text(query) ,{'request_id': request_id, 'user_id': user_id})
+        
+    async def delete_task(self, user_id, request_id):
+        query = f'''delete from {self.table_name} where user_id = :user_id and request_id = :request_id'''
+        
+        await self.conn.execute(text(query), {'user_id': user_id, 'request_id': request_id})
+    
     def add_task_result_sync(self, request_id: str, user_id: str):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''insert into {self.table_name}(request_id, user_id, created_at) values (:request_id, :user_id, :created_at)'''
 
@@ -401,8 +480,7 @@ class TaskRunTableOperation:
         self.conn_sync.commit()
     
     def update_task_result_sync(self, request_id: str, tasks: str):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
                    set common_tasks_w_result = :tasks
@@ -412,8 +490,7 @@ class TaskRunTableOperation:
         self.conn_sync.commit()
         
     def update_original_common_task_result_sync(self, request_id: str, tasks: str):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
                    set original_common_tasks = :tasks
@@ -423,8 +500,7 @@ class TaskRunTableOperation:
         self.conn_sync.commit()
         
     def update_column_transform_task_status_sync(self, request_id, column_transforms_status):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
             set column_transforms_status = :column_transforms_status
@@ -434,8 +510,7 @@ class TaskRunTableOperation:
         self.conn_sync.commit()
         
     def update_column_combination_task_status_sync(self, request_id, column_combinations_status):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
             set column_combinations_status = :column_combinations_status
@@ -445,8 +520,7 @@ class TaskRunTableOperation:
         self.conn_sync.commit()
         
     def update_final_dataset_snippet_sync(self, request_id, dataset_snippet):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
             set final_dataset_snippet = :dataset_snippet
@@ -456,8 +530,7 @@ class TaskRunTableOperation:
         self.conn_sync.commit()
         
     def update_columns_info_sync(self, request_id, columns_info):
-        if not self.conn_sync:
-            raise Exception('conn_sync object has not been instantiated')
+        
         
         query = f'''update {self.table_name}
             set columns_info = :columns_info

@@ -1,6 +1,6 @@
 uvicorn app.api:app --reload
-celery -A app.tasks  worker --loglevel=info -P solo -Q data_processing_queue
-celery -A app.tasks  worker --loglevel=info -P gevent --concurrency 10 -Q get_prompt_res_queue
+celery -A app.tasks  worker --loglevel=info -P solo -Q cpu_tasks_queue
+celery -A app.tasks  worker --loglevel=info -P gevent --concurrency 10 -Q io_tasks_queue
 streamlit run streamlit_app/home.py
 
 redis-server --appendonly yes --appendfsync everysec
