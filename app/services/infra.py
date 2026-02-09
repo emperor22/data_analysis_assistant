@@ -5,7 +5,6 @@ from app.logger import logger
 from app.config import Config
 
 
-
 import json
 import time
 import smtplib
@@ -26,7 +25,6 @@ from fastapi import BackgroundTasks, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import sentry_sdk
-
 
 
 async def is_task_invalid_or_still_processing(request_id, user_id, prompt_table_ops):

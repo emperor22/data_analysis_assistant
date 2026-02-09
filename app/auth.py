@@ -20,8 +20,6 @@ import base64
 from app.logger import logger
 
 
-
-
 def generate_random_otp():
     secret_key = Config.SECRET_KEY_OTP_ENCRYPT.encode()
     raw_otp = str(secrets.randbelow(1000000)).zfill(6)

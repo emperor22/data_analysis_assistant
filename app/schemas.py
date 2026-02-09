@@ -438,7 +438,7 @@ class ColumnInfoAndOperations(BaseModel):
 
         def model_key(val):
             return val["type"]
-        
+
         model_key_func = model_key
         values_to_check = [val.operation for val in values]
         valid_vals_num = filter_out_invalid_values(
@@ -458,7 +458,7 @@ class ColumnInfoAndOperations(BaseModel):
 
         def model_key(val):
             return "column_combination"
-            
+
         model_key_func = model_key
         values_to_check = [val.operation for val in values]
         valid_vals_num = filter_out_invalid_values(
@@ -495,10 +495,10 @@ class DatasetAnalysisModelPartTwo(BaseModel):  # smaller model for subsequent ta
         valid_values = []
 
         for task in values:
-            
+
             def model_key(val):
                 return val["function"]
-            
+
             model_key_func = model_key
             valid_steps_num = filter_out_invalid_values(
                 task.steps,
