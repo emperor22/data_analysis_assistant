@@ -1,11 +1,8 @@
-from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.exceptions import HTTPException
 from fastapi import Depends, status
 from jwt.exceptions import InvalidTokenError
 import jwt
-import asyncio
-from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 
 from datetime import datetime, timezone, timedelta
@@ -16,15 +13,11 @@ from app.config import Config
 
 import secrets
 
-import os
 import hmac
 import hashlib
 import base64
 
 from app.logger import logger
-
-
-from cryptography.fernet import Fernet
 
 
 
@@ -36,11 +29,13 @@ def generate_random_otp():
     encrypted_otp = base64.b64encode(digest).decode()
     return raw_otp, encrypted_otp
 
+
 def verify_otp(input_otp, encrypted_stored_otp):
     secret_key = Config.SECRET_KEY_OTP_ENCRYPT.encode()
     expected = hmac.new(secret_key, input_otp.encode(), hashlib.sha256).digest()
     stored = base64.b64decode(encrypted_stored_otp)
     return hmac.compare_digest(expected, stored)
+
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -54,48 +49,49 @@ def create_access_token(data: dict, expire_minutes=None):
     return encoded_jwt
 
 
-    
 async def get_current_user(token=Depends(oauth2_scheme), conn=Depends(get_session)):
-    credentials_exception = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials", 
-                                          headers={"WWW-Authenticate": "Bearer"})
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     try:
         payload = jwt.decode(token, Config.SECRET_KEY, algorithms=[Config.ALGORITHM])
         username = payload.get("sub")
         if username is None:
             raise credentials_exception
-        
+
     except InvalidTokenError:
         raise credentials_exception
-    
+
     user_table_ops = UserTableOperation(conn)
     user = await user_table_ops.get_user(username)
 
     if user is None:
         raise credentials_exception
 
-    return GetCurrentUserModel(username=user['username'], user_id=user['id'], email=user['email'])
+    return GetCurrentUserModel(
+        username=user["username"], user_id=user["id"], email=user["email"]
+    )
+
 
 def get_admin(current_user=Depends(get_current_user)):
-    logger.debug('caught')
+    logger.debug("caught")
     user_email = current_user.email
     if not user_email == Config.ADMIN_EMAIL:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="you need admin privileges to access this")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="you need admin privileges to access this",
+        )
     return
 
 
 FERNET = Fernet(Config.API_KEY_ENCRYPTION_KEY.encode())
 
+
 def encrypt_api_key(key):
     return FERNET.encrypt(key.encode())
 
+
 def decrypt_api_key(encrypted_key):
     return FERNET.decrypt(encrypted_key).decode()
-
-
-
-    
-
-    
-    
-
-
