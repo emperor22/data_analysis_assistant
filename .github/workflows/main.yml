@@ -49,6 +49,7 @@ jobs:
   build-and-push-docker:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
+    environment: data_analysis_assistant
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: lint-and-test
     permissions:
