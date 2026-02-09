@@ -140,7 +140,7 @@ def handle_rate_limit_exception_prompt_task(
     raise TerminalRateLimitException
 
 
-####################
+#####################
 
 
 class DatabaseTask(app.Task):
