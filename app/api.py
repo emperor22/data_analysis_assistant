@@ -139,6 +139,12 @@ async def read_root(request: Request):
     return {"Hello": "World"}
 
 
+@app.get("/health")
+@limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
+async def health_check(request: Request):
+    return {"detail": "app is running"}
+
+
 @app.post("/delete_task/{request_id}")
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
 @check_if_task_is_valid

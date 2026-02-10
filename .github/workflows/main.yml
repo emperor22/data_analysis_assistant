@@ -52,6 +52,8 @@ jobs:
     environment: data_analysis_assistant
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: lint-and-test
+    env:
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
     permissions:
       contents: read
 
@@ -79,3 +81,42 @@ jobs:
           
       - name: publish
         uses: 0x4r45h/docker-compose-ci@v0.1.0
+
+      - name: 📂 Copy Docker Compose and Nginx Config
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml,nginx/"
+          target: "/home/ubuntu/data_analysis_assistant"
+
+      - name: 🚀 Deploy to Remote Server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.REMOTE_HOST }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # We export the variables and then run compose
+          script: |
+            cd /home/ubuntu/data_analysis_assistant
+
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+            export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
+            export SENTRY_DSN="${{ secrets.SENTRY_DSN }}"
+            export REDIS_URL="${{ secrets.REDIS_URL }}"
+            export DATABASE_URL_ASYNC="${{ secrets.DATABASE_URL_ASYNC }}"
+            export DATABASE_URL_SYNC="${{ secrets.DATABASE_URL_SYNC }}"
+            export LLM_API_KEY_GOOGLE="${{ secrets.LLM_API_KEY_GOOGLE }}"
+            export LLM_API_KEY_CEREBRAS="${{ secrets.LLM_API_KEY_CEREBRAS }}"
+            export EMAIL_USERNAME="${{ secrets.EMAIL_USERNAME }}"
+            export EMAIL_PASSWORD="${{ secrets.EMAIL_PASSWORD }}"
+            export EMAIL_SERVER="${{ secrets.EMAIL_SERVER }}"
+            export SECRET_KEY="${{ secrets.SECRET_KEY }}"
+            export API_KEY_ENCRYPTION_KEY="${{ secrets.API_KEY_ENCRYPTION_KEY }}"
+            export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
+
+            docker compose pull
+            docker compose run --rm fastapi_app alembic upgrade head
+            docker compose up -d

@@ -1,47 +1,43 @@
 services:
-
-
   nginx:
     build: ./nginx
+    image: ${DOCKERHUB_USERNAME}/data_analysis_nginx:latest
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
-      - fastapi_app
-      - streamlit_frontend
+      fastapi_app:
+        condition: service_healthy
+      streamlit_frontend:
+        condition: service_started
     networks:
       - app-network
     restart: always
 
-
   redis:
     image: redis:7-alpine
-    command: redis-server
-
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
     restart: always
 
-
   fastapi_app:
+    image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
     build:
       context: .
       dockerfile: ./app/Dockerfile
-
     command: uvicorn app.api:app --host 0.0.0.0 --port 8000
     expose:
       - 8000
-    env_file:
-      - .env
     volumes:
       - ./app_data/datasets:/usr/src/app/app/datasets
     depends_on:
@@ -49,31 +45,61 @@ services:
         condition: service_healthy
     networks:
       - app-network
+    environment:
+      - REDIS_PASSWORD
+      - REDIS_URL
+      - SENTRY_DSN
+      - DATABASE_URL_ASYNC
+      - DATABASE_URL_SYNC
+      - LLM_API_KEY_GOOGLE
+      - LLM_API_KEY_CEREBRAS
+      - EMAIL_USERNAME
+      - EMAIL_PASSWORD
+      - EMAIL_SERVER
+      - SECRET_KEY
+      - API_KEY_ENCRYPTION_KEY
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     restart: always
 
-
   streamlit_frontend:
+    image: ${DOCKERHUB_USERNAME}/data_analysis_frontend:latest
     build:
       context: .
       dockerfile: ./streamlit_app/Dockerfile
-    # Running from root context
     command: streamlit run streamlit_app/home.py --server.port 8501 --server.enableCORS true
     expose:
       - 8501
-    env_file:
-      - .env
     networks:
       - app-network
+    depends_on:
+      fastapi_app:
+        condition: service_healthy
     restart: always
 
+  celery_beat:
+    image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
+    command: celery -A app.tasks beat --loglevel=info --schedule=/usr/src/app/beat_schedule/celerybeat-schedule
+    volumes:
+      - ./app_data/beat:/usr/src/app/beat_schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    environment:
+      - REDIS_PASSWORD
+      - REDIS_URL
+      - DATABASE_URL_SYNC
+    restart: always
 
   cpu_tasks_queue:
-    build:
-      context: .
-      dockerfile: ./app/Dockerfile
+    image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
     command: celery -A app.tasks worker --loglevel=info -P solo -Q cpu_tasks_queue
-    env_file:
-      - .env
     volumes:
       - ./app_data/datasets:/usr/src/app/app/datasets
       - ./app_data/db/test.sqlite:/usr/src/app/test.sqlite
@@ -82,16 +108,15 @@ services:
         condition: service_healthy
     networks:
       - app-network
+    environment:
+      - REDIS_PASSWORD
+      - REDIS_URL
+      - DATABASE_URL_SYNC
     restart: always
 
-
   io_tasks_queue:
-    build:
-      context: .
-      dockerfile: ./app/Dockerfile
+    image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
     command: celery -A app.tasks worker --loglevel=info -P gevent --concurrency 10 -Q io_tasks_queue
-    env_file:
-      - .env
     volumes:
       - ./app_data/datasets:/usr/src/app/app/datasets
       - ./app_data/db/test.sqlite:/usr/src/app/test.sqlite
@@ -100,6 +125,10 @@ services:
         condition: service_healthy
     networks:
       - app-network
+    environment:
+      - REDIS_PASSWORD
+      - REDIS_URL
+      - DATABASE_URL_SYNC
     restart: always
 
 networks:
