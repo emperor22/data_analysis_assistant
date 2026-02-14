@@ -121,7 +121,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(LogRequestMiddleware)
 
-origins = ["*"]
+origins = [
+    "http://localhost:8501",
+    "http://127.0.0.1:8501",
+    Config.PUBLIC_URL,
+]
 
 app.add_middleware(
     CORSMiddleware,

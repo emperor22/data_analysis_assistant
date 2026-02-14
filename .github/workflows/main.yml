@@ -117,6 +117,8 @@ jobs:
             export SECRET_KEY="${{ secrets.SECRET_KEY }}"
             export API_KEY_ENCRYPTION_KEY="${{ secrets.API_KEY_ENCRYPTION_KEY }}"
             export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
+            export API_URL="${{ secrets.API_URL }}"
+            export PUBLIC_URL="${{ secrets.PUBLIC_URL }}"
 
             docker compose pull
             docker compose run --rm fastapi_app alembic upgrade head

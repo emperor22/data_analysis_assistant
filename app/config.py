@@ -61,6 +61,9 @@ class Configs(BaseSettings):
     THRES_SLOW_ADDITIONAL_ANALYSES_REQUEST_PROCESS_TIME_MS: int = 45 * 1000
     THRES_SLOW_TASK_EXECUTION_PROCESS_TIME_MS: int = 7 * 1000
 
+    API_URL: str
+
+    REDIS_PASSWORD: str
     REDIS_URL: str
     # REDIS_URL: str = 'redis://redis:6379/0'
 

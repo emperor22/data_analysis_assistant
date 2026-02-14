@@ -13,13 +13,15 @@ from PIL import Image
 from io import BytesIO
 
 from typing import Literal
+import os
 
 # import nltk
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger_eng')
 
-# URL = 'https://nginx/api'
-URL = "http://localhost:8000"
+default_url = "http://localhost:8000"
+URL = os.environ.get("API_URL", default_url)
+
 
 DEFAULT_VERSION_CUSTOMIZED_TASKS = 1
 
@@ -160,7 +162,7 @@ def manage_customized_tasks(
     if slot is not None:
         data["slot"] = slot
 
-    res = requests.post(url, json=data, headers=headers)
+    res = requests.post(url, json=data, headers=headers, verify=False)
 
     return res
 
@@ -309,7 +311,7 @@ def make_analysis_request(
 def download_excel_result(request_id, task_id, task, headers=None):
     url = f"{URL}/download_excel_result/{task}/{request_id}/{task_id}"
 
-    res = requests.get(url, headers=headers)
+    res = requests.get(url, headers=headers, verify=False)
 
     return res
 
