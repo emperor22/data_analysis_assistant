@@ -60,6 +60,8 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/data_analysis_api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build & Push Frontend
         uses: docker/build-push-action@v5
@@ -69,6 +71,8 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/data_analysis_frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Build & Push Nginx
         uses: docker/build-push-action@v5
@@ -78,6 +82,8 @@ jobs:
           push: true
           platforms: linux/arm64
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/data_analysis_nginx:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy to ARM Server
@@ -92,7 +98,9 @@ jobs:
           host: ${{ secrets.REMOTE_HOST }}
           username: ${{ secrets.REMOTE_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.yml,nginx/"
+          source: |
+            docker-compose.yml
+            nginx/**
           target: "/home/ubuntu/data_analysis_assistant"
 
       - name: Deploy
