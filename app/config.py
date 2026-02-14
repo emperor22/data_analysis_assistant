@@ -50,8 +50,8 @@ class Configs(BaseSettings):
 
     PT1_PROMPT_TEMPLATE: str = "app/prompts/split_prompt/prompt_part1.md"
     ADDT_REQ_PROMPT_TEMPLATE: str = (
-    "app/prompts/split_prompt/additional_tasks_req_prompt.md"
-)
+        "app/prompts/split_prompt/additional_tasks_req_prompt.md"
+    )
     PT2_PROMPT_TEMPLATE: str = "app/prompts/split_prompt/prompt_part2.md"
 
     RATE_LIMIT_GET_ENDPOINTS: str = "60/minute"
@@ -70,8 +70,6 @@ class Configs(BaseSettings):
     REDIS_PASSWORD: str
     REDIS_URL: str
     # REDIS_URL: str = 'redis://redis:6379/0'
-
-
 
     REDIS_LAST_ACCESSED_HASHTABLE_NAME: str = "req_id_last_accessed"
 
