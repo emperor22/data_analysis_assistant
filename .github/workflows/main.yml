@@ -92,6 +92,8 @@ jobs:
     environment: data_analysis_assistant
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Copy Compose & Nginx
         uses: appleboy/scp-action@v0.1.7
         with:
