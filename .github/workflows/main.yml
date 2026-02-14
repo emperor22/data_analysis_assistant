@@ -34,6 +34,7 @@ jobs:
     name: Build & Push Multi-Arch Images
     runs-on: ubuntu-latest
     needs: lint-and-test
+    environment: data_analysis_assistant
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
