@@ -49,6 +49,10 @@ class Configs(BaseSettings):
     DEFAULT_PROMPT_VERSION: int = 3
 
     PT1_PROMPT_TEMPLATE: str = "app/prompts/split_prompt/prompt_part1.md"
+    ADDT_REQ_PROMPT_TEMPLATE: str = (
+    "app/prompts/split_prompt/additional_tasks_req_prompt.md"
+)
+    PT2_PROMPT_TEMPLATE: str = "app/prompts/split_prompt/prompt_part2.md"
 
     RATE_LIMIT_GET_ENDPOINTS: str = "60/minute"
     RATE_LIMIT_TASK_ENDPOINTS: str = "5/minute"
@@ -67,14 +71,11 @@ class Configs(BaseSettings):
     REDIS_URL: str
     # REDIS_URL: str = 'redis://redis:6379/0'
 
-    ADDT_REQ_PROMPT_TEMPLATE: str = (
-        "app/prompts/split_prompt/additional_tasks_req_prompt.md"
-    )
-    PT2_PROMPT_TEMPLATE: str = "app/prompts/split_prompt/prompt_part2.md"
+
 
     REDIS_LAST_ACCESSED_HASHTABLE_NAME: str = "req_id_last_accessed"
 
-    DATASET_SAVE_PATH: str = "app/datasets"
+    DATASET_SAVE_PATH: str = "app_data/result/datasets"
 
     DEBUG_PROMPT_AND_RES_SAVE_DIR: str = "resp_jsons"
 
