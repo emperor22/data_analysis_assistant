@@ -49,6 +49,10 @@ docs/_build/
 *.sqlite3
 *.sqlite
 *.db
+*.png
+*.zip
+*.pdf
+*.xlsx
 .env
 .env.*
 *.code-workspace
@@ -56,4 +60,5 @@ docs/_build/
 resp_jsons/
 test_dataset/
 app/datasets
+app_data/datasets
 *.csv
