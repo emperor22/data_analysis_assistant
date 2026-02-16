@@ -100,9 +100,7 @@ jobs:
           host: ${{ secrets.REMOTE_HOST }}
           username: ${{ secrets.REMOTE_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: |
-            docker-compose.yml
-            nginx/**
+          source: "docker-compose.yml,nginx/"
           target: "/home/ubuntu/data_analysis_assistant"
 
       - name: Deploy
