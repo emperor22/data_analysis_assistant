@@ -66,6 +66,7 @@ class Configs(BaseSettings):
     THRES_SLOW_TASK_EXECUTION_PROCESS_TIME_MS: int = 7 * 1000
 
     API_URL: str
+    PUBLIC_URL: str
 
     REDIS_PASSWORD: str
     REDIS_URL: str

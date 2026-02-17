@@ -29,7 +29,7 @@ services:
       timeout: 3s
       retries: 5
     restart: always
-    # env_file: ./app/.env.local
+    env_file: ./app/.env.local
 
   fastapi_app:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -46,19 +46,7 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    environment:
-      - REDIS_PASSWORD
-      - REDIS_URL
-      - SENTRY_DSN
-      - DATABASE_URL_ASYNC
-      - DATABASE_URL_SYNC
-      - LLM_API_KEY_GOOGLE
-      - LLM_API_KEY_CEREBRAS
-      - EMAIL_USERNAME
-      - EMAIL_PASSWORD
-      - EMAIL_SERVER
-      - SECRET_KEY
-      - API_KEY_ENCRYPTION_KEY
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -66,7 +54,7 @@ services:
       retries: 3
       start_period: 15s
     restart: always
-    # env_file: ./app/.env.local
+    env_file: ./app/.env.local
 
   streamlit_frontend:
     image: ${DOCKERHUB_USERNAME}/data_analysis_frontend:latest
@@ -82,7 +70,7 @@ services:
       fastapi_app:
         condition: service_healthy
     restart: always
-    # env_file: ./app/.env.local
+    env_file: ./app/.env.local
 
   celery_beat:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -97,12 +85,8 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    environment:
-      - REDIS_PASSWORD
-      - REDIS_URL
-      - DATABASE_URL_SYNC
     restart: always
-    # env_file: ./app/.env.local
+    env_file: ./app/.env.local
 
   cpu_tasks_queue:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -117,12 +101,8 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    environment:
-      - REDIS_PASSWORD
-      - REDIS_URL
-      - DATABASE_URL_SYNC
     restart: always
-    # env_file: ./app/.env.local
+    env_file: ./app/.env.local
 
   io_tasks_queue:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -137,12 +117,8 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    environment:
-      - REDIS_PASSWORD
-      - REDIS_URL
-      - DATABASE_URL_SYNC
     restart: always
-    # env_file: ./app/.env.local
+    env_file: ./app/.env.local
 
 networks:
   app-network:

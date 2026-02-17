@@ -115,21 +115,6 @@ jobs:
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
-            export SENTRY_DSN="${{ secrets.SENTRY_DSN }}"
-            export REDIS_URL="${{ secrets.REDIS_URL }}"
-            export DATABASE_URL_ASYNC="${{ secrets.DATABASE_URL_ASYNC }}"
-            export DATABASE_URL_SYNC="${{ secrets.DATABASE_URL_SYNC }}"
-            export LLM_API_KEY_GOOGLE="${{ secrets.LLM_API_KEY_GOOGLE }}"
-            export LLM_API_KEY_CEREBRAS="${{ secrets.LLM_API_KEY_CEREBRAS }}"
-            export EMAIL_USERNAME="${{ secrets.EMAIL_USERNAME }}"
-            export EMAIL_PASSWORD="${{ secrets.EMAIL_PASSWORD }}"
-            export EMAIL_SERVER="${{ secrets.EMAIL_SERVER }}"
-            export SECRET_KEY="${{ secrets.SECRET_KEY }}"
-            export API_KEY_ENCRYPTION_KEY="${{ secrets.API_KEY_ENCRYPTION_KEY }}"
-            export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
-            export API_URL="${{ secrets.API_URL }}"
-            export PUBLIC_URL="${{ secrets.PUBLIC_URL }}"
-
             docker compose pull
             docker compose run --rm fastapi_app alembic upgrade head
             docker compose up -d
