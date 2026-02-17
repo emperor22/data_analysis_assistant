@@ -29,7 +29,7 @@ services:
       timeout: 3s
       retries: 5
     restart: always
-    env_file: ./app/.env.local
+    env_file: ./.env.local
 
   fastapi_app:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -53,7 +53,7 @@ services:
       retries: 3
       start_period: 15s
     restart: always
-    env_file: ./app/.env.local
+    env_file: ./.env.local
 
   streamlit_frontend:
     image: ${DOCKERHUB_USERNAME}/data_analysis_frontend:latest
@@ -69,7 +69,7 @@ services:
       fastapi_app:
         condition: service_healthy
     restart: always
-    env_file: ./app/.env.local
+    env_file: ./.env.local
 
   celery_beat:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -85,7 +85,7 @@ services:
     networks:
       - app-network
     restart: always
-    env_file: ./app/.env.local
+    env_file: ./.env.local
 
   cpu_tasks_queue:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -101,7 +101,7 @@ services:
     networks:
       - app-network
     restart: always
-    env_file: ./app/.env.local
+    env_file: ./.env.local
 
   io_tasks_queue:
     image: ${DOCKERHUB_USERNAME}/data_analysis_api:latest
@@ -117,7 +117,7 @@ services:
     networks:
       - app-network
     restart: always
-    env_file: ./app/.env.local
+    env_file: ./.env.local
 
 networks:
   app-network:
