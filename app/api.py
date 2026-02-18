@@ -31,6 +31,7 @@ from app.services.infra import (
     check_if_task_is_valid,
     get_email_data_and_attachment,
     get_col_transform_and_combination,
+    init_sentry,
 )
 from app.services.utils import (
     split_and_validate_new_prompt,
@@ -109,7 +110,7 @@ from pydantic import ValidationError
 import shutil
 
 
-# init_sentry()
+init_sentry()
 
 
 limiter = Limiter(key_func=get_remote_address)
