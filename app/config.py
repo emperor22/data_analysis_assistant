@@ -41,7 +41,6 @@ class Configs(BaseSettings):
 
     WARN_FOR_SLOW_RESPONSE_TIME: bool = True
     THRES_SLOW_RESPONSE_TIME_MS: int = 1000
-    DATASET_SAVE_PATH: str = "app/datasets"
     OTP_EXPIRE_MINUTES: int = 5
 
     REDIS_LAST_ACCESSED_HASHTABLE_NAME: str = "req_id_last_accessed"
@@ -109,7 +108,6 @@ class Configs(BaseSettings):
     EMAIL_SERVER: str
 
     N_ROWS_READ_UPLOAD_FILE: int = 100
-    DATASET_SAVE_PATH: str = "app/datasets"
 
     DATASET_ROW_THRESHOLD_BEFORE_EXPORT: int = 20
     DATASET_COLUMNS_THRESHOLD_BEFORE_EXPORT: int = 5

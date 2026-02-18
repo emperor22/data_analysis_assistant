@@ -186,7 +186,7 @@ def is_task_still_processing(status):
     return status in processing_status
 
 
-@st.cache_data
+@st.cache_data(scope='session')
 @include_auth_header
 def get_task_ids_by_user(headers=None):
     url = f"{URL}/get_request_ids"
@@ -235,7 +235,7 @@ def render_delete_task_button(task_id):
 
 
 @include_auth_header
-@st.cache_data
+@st.cache_data(scope='session')
 def get_col_info_by_id(task_id, headers=None):
     url = f"{URL}/get_col_info_by_id/{task_id}"
 
@@ -245,7 +245,7 @@ def get_col_info_by_id(task_id, headers=None):
 
 
 @include_auth_header
-@st.cache_data
+@st.cache_data(scope='session')
 def get_dataset_snippet_by_id(task_id, headers=None):
     url = f"{URL}/get_dataset_snippet_by_id/{task_id}"
 
