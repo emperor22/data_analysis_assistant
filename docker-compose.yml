@@ -40,7 +40,7 @@ services:
     expose:
       - 8000
     volumes:
-      - ./app_data/datasets:/usr/src/app/app/datasets
+      - ./app_data/datasets:/usr/src/app/app_data/result/datasets
     depends_on:
       redis:
         condition: service_healthy
@@ -94,7 +94,7 @@ services:
       dockerfile: ./app/Dockerfile
     command: celery -A app.tasks worker --loglevel=info -P solo -Q cpu_tasks_queue
     volumes:
-      - ./app_data/datasets:/usr/src/app/app/datasets
+      - ./app_data/datasets:/usr/src/app/app_data/result/datasets
     depends_on:
       redis:
         condition: service_healthy
@@ -110,7 +110,7 @@ services:
       dockerfile: ./app/Dockerfile
     command: celery -A app.tasks worker --loglevel=info -P gevent --concurrency 10 -Q io_tasks_queue
     volumes:
-      - ./app_data/datasets:/usr/src/app/app/datasets
+      - ./app_data/datasets:/usr/src/app/app_data/result/datasets
     depends_on:
       redis:
         condition: service_healthy
