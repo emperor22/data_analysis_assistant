@@ -75,7 +75,7 @@ class Configs(BaseSettings):
 
     DATASET_SAVE_PATH: str = "app_data/result/datasets"
 
-    DEBUG_PROMPT_AND_RES_SAVE_DIR: str = "resp_jsons"
+    DEBUG_PROMPT_AND_RES_SAVE_DIR: str = "app_data/resp_jsons"
 
     # crud.py
     # DATABASE_URL_ASYNC: str = 'sqlite+aiosqlite:///./test.sqlite'

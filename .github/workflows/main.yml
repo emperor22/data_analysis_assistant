@@ -111,7 +111,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /home/ubuntu/data_analysis_assistant
-            mkdir -p app_data/datasets
+            mkdir -p app_data/result/datasets
+            mkdir -p app_data/resp_jsons
             
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 

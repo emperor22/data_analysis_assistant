@@ -282,7 +282,6 @@ async def upload(
             request_id=request_id,
             user_id=user_id,
             dataset_cols=literal_eval(dataset_columns_str),
-            debug_prompt_and_res=True,
             # mock_pt1_resp_file='resp_jsons/res_pt1_test.json', mock_pt2_resp_file='resp_jsons/res_pt2_test.json'
         ),
         data_processing_task.s(

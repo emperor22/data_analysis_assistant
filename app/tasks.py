@@ -1,4 +1,4 @@
-from celery import Celery
+from celery import Celery, signals
 import json
 import time
 
@@ -52,6 +52,8 @@ import os
 
 from datetime import datetime
 
+import sentry_sdk
+
 
 app = Celery("tasks", backend=Config.REDIS_URL, broker=Config.REDIS_URL)
 app.conf.task_routes = {
@@ -60,6 +62,14 @@ app.conf.task_routes = {
     "tasks.data_processing_task": {"queue": "cpu_tasks_queue"},
     "tasks.send_email_task": {"queue": "io_tasks_queue"},
 }
+
+
+@signals.celeryd_init.connect
+def init_sentry(**_kwargs):
+    sentry_sdk.init(
+        dsn=Config.SENTRY_DSN,
+        send_default_pii=True,
+    )
 
 
 @app.task
