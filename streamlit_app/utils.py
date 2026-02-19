@@ -198,6 +198,15 @@ def get_task_ids_by_user(headers=None):
     return res
 
 
+def is_valid_email(email):
+    pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+
+    if re.fullmatch(pattern, email):
+        return True
+    else:
+        return False
+
+
 def render_request_ids():
     task_ids = get_task_ids_by_user()
     col1, col2 = st.columns([12, 1])

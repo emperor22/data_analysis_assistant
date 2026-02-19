@@ -53,6 +53,7 @@ import os
 from datetime import datetime
 
 import sentry_sdk
+from sentry_sdk.integrations.celery import CeleryIntegration
 
 
 app = Celery("tasks", backend=Config.REDIS_URL, broker=Config.REDIS_URL)
@@ -69,6 +70,7 @@ def init_sentry(**_kwargs):
     sentry_sdk.init(
         dsn=Config.SENTRY_DSN,
         send_default_pii=True,
+        integrations=[CeleryIntegration(monitor_beat_tasks=False)],
     )
 
 

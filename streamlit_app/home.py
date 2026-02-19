@@ -1,5 +1,5 @@
 import streamlit as st
-from utils import submit_login_request, get_otp, register_user
+from utils import submit_login_request, get_otp, register_user, is_valid_email
 import time
 
 st.set_page_config(layout="centered")
@@ -65,6 +65,11 @@ with register_tab:
         if st.form_submit_button("Register"):
             if not all([username_reg, first_name, last_name, email]):
                 st.error("Please fill in all the fields")
+                time.sleep(1)
+                st.rerun()
+
+            if not is_valid_email(email):
+                st.error("Please fill in a valid email.")
                 time.sleep(1)
                 st.rerun()
 
