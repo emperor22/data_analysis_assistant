@@ -39,6 +39,9 @@ def register_user(username, first_name, last_name, email):
     if res.status_code == 409:
         return "username/email already exists"
 
+    if res.status_code == 422:
+        return "invalid username/first name/last name"
+
     return "success"
 
 
@@ -198,6 +201,17 @@ def get_task_ids_by_user(headers=None):
     return res
 
 
+@include_auth_header
+def get_task_ids_by_user_uncached(headers=None):
+    url = f"{URL}/get_request_ids"
+
+    res = requests.get(
+        url, verify=False, headers=headers
+    )  # result is [task_id, filename, status]
+
+    return res
+
+
 def is_valid_email(email):
     pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
 
@@ -209,6 +223,7 @@ def is_valid_email(email):
 
 def render_request_ids():
     task_ids = get_task_ids_by_user()
+    task_ids = task_ids["request_ids"]
     col1, col2 = st.columns([12, 1])
 
     with col2:
@@ -217,19 +232,23 @@ def render_request_ids():
             st.rerun()
     with col1:
         if not task_ids:
-            st.error("cannot find request ids")
             st.stop()
 
-        task_ids = [
-            i[0] for i in task_ids["request_ids"] if not is_task_still_processing(i[2])
+        task_ids_choices = [""] + [
+            f"{i[1]} - Filename: {i[2]}"
+            for i in task_ids
+            if not is_task_still_processing(i[2])
         ]  # get first value which is the task id
 
         task_ids_select = st.selectbox(
-            "Select Task ID", options=[""] + task_ids, key="task_id_select"
+            "Select task", options=task_ids_choices, key="task_id_select"
         )
 
         if not task_ids_select:
             st.stop()
+
+        task_id_idx = task_ids_choices.index(task_ids_select)
+        task_ids_select = task_ids[task_id_idx - 1][0]
 
     return task_ids_select
 
@@ -612,6 +631,48 @@ def render_task_step(step_idx, step):
 #     return has_verb
 
 
+def display_b64_encoded_image(img_string):
+    image_bytes = base64.b64decode(img_string)
+
+    image = Image.open(BytesIO(image_bytes))
+
+    st.image(image)
+
+
+def render_progress_table():
+    res = get_task_ids_by_user_uncached()
+
+    if not res:
+        st.error("You don't have any tasks.")
+        return
+
+    req_id_col, req_name_col, req_filename_col, prog_col = st.columns(4)
+
+    with req_id_col:
+        st.write("Request ID")
+    with req_name_col:
+        st.write("Name")
+    with req_filename_col:
+        st.write("Filename")
+    with prog_col:
+        st.write("Progress")
+
+    res = res["request_ids"]
+
+    for req_id, req_name, req_filename, req_status in res:
+        with req_id_col:
+            st.write(req_id)
+        with req_name_col:
+            st.write(req_name)
+        with req_filename_col:
+            st.write(req_filename)
+        with prog_col:
+            if req_status not in failed_states:
+                st.progress(value=progress_value[req_status], text=req_status)
+            else:
+                st.error(req_status)
+
+
 PARAMS_MAP = {
     "groupby": {
         "template": "Group by column(s) $columns_to_group_by and calculate $calculation of column(s) $columns_to_aggregate",
@@ -700,13 +761,42 @@ DEFAULT_PARAMS = {
     "resample_data": ["frequency", "static_group_cols", "columns_to_aggregate"],
 }
 
+initial_request_flow = {
+    "GETTING INITIAL REQUEST PROMPT RESULT": 1 / 4,
+    "INITIAL REQUEST PROMPT RESULT RECEIVED": 2 / 4,
+    "RUNNING INITIAL ANALYSES TASKS": 3 / 4,
+    "INITIAL ANALYSIS TASKS FINISHED": 4 / 4,
+}
 
-def display_b64_encoded_image(img_string):
-    image_bytes = base64.b64decode(img_string)
+addt_analyses_flow = {
+    "GETTING ADDITIONAL ANALYSES REQUEST PROMPT RESULT": 1 / 4,
+    "ADDITIONAL ANALYSES PROMPT RESULT RECEIVED": 2 / 4,
+    "RUNNING ADDITIONAL ANALYSES TASKS": 3 / 4,
+    "ADDITIONAL ANALYSES TASKS FINISHED": 4 / 4,
+}
 
-    image = Image.open(BytesIO(image_bytes))
+execute_analyses_flow = {
+    "RUNNING USER CUSTOMIZED ANALYSIS TASKS": 1 / 2,
+    "USER CUSTOMIZED ANALYSIS TASKS FINISHED": 2 / 2,
+}
 
-    st.image(image)
+execute_analyses_new_dataset_flow = {
+    "RUNNING USER CUSTOMIZED ANALYSIS TASKS WITH NEW DATASET": 1 / 2,
+    "USER CUSTOMIZED ANALYSIS TASKS WITH NEW DATASET FINISHED": 2 / 2,
+}
+
+progress_value = {
+    **initial_request_flow,
+    **addt_analyses_flow,
+    **execute_analyses_flow,
+    **execute_analyses_new_dataset_flow,
+}
+
+failed_states = [
+    "TASK FAILED BECAUSE DATASET IS BLACKLISTED"
+    "TASK DELETED BECAUSE IT IS NOT ACCESSED FOR SOME TIME"
+    "TASK FAILED BECAUSE LLM ENDPOINT IS RATE LIMITED"
+]
 
 
 ##########################################################################

@@ -71,7 +71,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 20s
     depends_on:
       fastapi_app:
         condition: service_healthy

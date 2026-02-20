@@ -29,4 +29,4 @@ COPY streamlit_app $APP_HOME/streamlit_app
 EXPOSE 8501
 
 # The CMD is overridden in docker-compose.yml, but a default is good practice
-CMD ["streamlit", "run", "streamlit_app/home.py", "--server.port", "8501", "--server.enableCORS", "true"]
+CMD ["streamlit", "run", "streamlit_app/Home.py", "--server.port", "8501", "--server.enableCORS", "true"]

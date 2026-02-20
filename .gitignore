@@ -53,6 +53,7 @@ docs/_build/
 *.zip
 *.pdf
 *.xlsx
+*.txt
 .env
 .env.*
 *.code-workspace

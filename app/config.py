@@ -161,7 +161,7 @@ class Configs(BaseSettings):
 
     MAX_TASK_COUNT: int = 20
 
-    model_config = SettingsConfigDict(env_file="app/.env.local")
+    model_config = SettingsConfigDict(env_file=".env.local")
 
 
 @lru_cache

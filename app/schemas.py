@@ -5,6 +5,7 @@ from pydantic import (
     field_validator,
     ValidationError,
     model_validator,
+    EmailStr,
 )
 from typing import List, Union, Dict, Any, Literal
 import re
@@ -46,7 +47,7 @@ class TaskStatus(Enum):
         "TASK DELETED BECAUSE IT IS NOT ACCESSED FOR SOME TIME"
     )
 
-    failed_because_rate_limited = "LLM ENDPOINT IS RATE LIMITED"
+    failed_because_rate_limited = "TASK FAILED BECAUSE LLM ENDPOINT IS RATE LIMITED"
 
 
 class TaskProcessingRunType(Enum):
@@ -76,10 +77,10 @@ class GetCurrentUserModel(BaseModel):
 
 
 class UserRegisterSchema(BaseModel):
-    username: str
-    email: str
-    first_name: str
-    last_name: str
+    username: str = Field(min_length=3, max_length=15)
+    email: EmailStr
+    first_name: str = Field(min_length=3, max_length=15)
+    last_name: str = Field(min_length=3, max_length=15)
 
 
 class ModelAndProviderSchema(BaseModel):

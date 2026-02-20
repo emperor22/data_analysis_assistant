@@ -66,7 +66,7 @@ with first_req_tab:
 
 with api_key_setup_tab:
     st.warning(
-        "This key will be encrypted and saved to your profile and will only be used for your requests. If rate limited, the app will resort back to using the global API key."
+        "Having your own key will help bypass the rate limit on the global LLM API key. This key will be encrypted and saved to your profile and will only be used for your requests."
     )
 
     api_key_setup_form = st.form("api_key_setup_form", enter_to_submit=False)
