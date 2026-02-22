@@ -108,7 +108,7 @@ def get_background_tasks(background_tasks: BackgroundTasks):
 
 
 def init_sentry():
-    if Config.ENV == "PROD":
+    if Config.ENV.upper() == "PROD":
         sentry_sdk.init(dsn=Config.SENTRY_DSN, send_default_pii=True, enable_logs=True)
 
 
