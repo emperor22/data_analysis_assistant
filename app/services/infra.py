@@ -84,19 +84,18 @@ def update_last_accessed_at_when_called(func):
         redis_client = kwargs.get("redis_client")
 
         if not request_id or not redis_client:
-            logger.warning(
-                f'update_last_accessed_at decorator called on function "{func.__name__}" with no request_id or redis_client parameter'
+            raise Exception(
+                "update_last_accessed_at decorator called on function with no request_id or redis_client parameters"
             )
-            return await func(*args, **kwargs)
 
         today = datetime.now().strftime("%Y-%m-%d")
 
         hashtable_last_accessed = Config.REDIS_LAST_ACCESSED_HASHTABLE_NAME
         cooldown_key = f"{request_id}:last_write:{today}"
 
-        logger.debug(f"cooldown key {cooldown_key}")
-
-        if redis_client.set(cooldown_key, "on_cooldown", ex=3600 * 24 * 2, nx=True):
+        if redis_client.set(
+            cooldown_key, "on_cooldown", ex=3600 * 24 * 2, nx=True
+        ):  # will return false if the cooldown key exists
             redis_client.hset(hashtable_last_accessed, request_id, today)
 
         return await func(*args, **kwargs)
@@ -109,7 +108,8 @@ def get_background_tasks(background_tasks: BackgroundTasks):
 
 
 def init_sentry():
-    sentry_sdk.init(dsn=Config.SENTRY_DSN, send_default_pii=True, enable_logs=True)
+    if Config.ENV == "PROD":
+        sentry_sdk.init(dsn=Config.SENTRY_DSN, send_default_pii=True, enable_logs=True)
 
 
 class LogRequestMiddleware(BaseHTTPMiddleware):

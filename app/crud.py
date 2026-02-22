@@ -141,12 +141,10 @@ class BlacklistedDatasetsTableOperation:
                 "last_failed_at": get_current_time_utc(),
             },
         )
-        self.conn_sync.commit()
 
     def remove_dataset_from_table(self, dataset_id):
         query = f"""delete from {self.table_name} where dataset_id = :dataset_id"""
         self.conn_sync.execute(text(query), {"dataset_id": dataset_id})
-        self.conn_sync.commit()
 
     def increment_failed_attempt(self, dataset_id):
         cur_failed_attempt = self.get_failed_attempt_count(dataset_id)
@@ -158,14 +156,12 @@ class BlacklistedDatasetsTableOperation:
             text(query),
             {"dataset_id": dataset_id, "new_failed_attempts": cur_failed_attempt + 1},
         )
-        self.conn_sync.commit()
 
     def reset_failed_attempt_count(self, dataset_id):
         query = f"""update {self.table_name}
                    set failed_attempts = 0
                    where dataset_id = :dataset_id"""
         self.conn_sync.execute(text(query), {"dataset_id": dataset_id})
-        self.conn_sync.commit()
 
     def get_failed_attempt_count(self, dataset_id):
         query = f"""select failed_attempts from {self.table_name} where dataset_id = :dataset_id"""
@@ -190,7 +186,6 @@ class BlacklistedDatasetsTableOperation:
                    set is_blacklisted = true
                    where dataset_id = :dataset_id"""
         self.conn_sync.execute(text(query), {"dataset_id": dataset_id})
-        self.conn_sync.commit()
 
 
 class UserCustomizedTasksTableOperation:
@@ -416,7 +411,6 @@ class PromptTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "prompt_result": prompt_result}
         )
-        self.conn_sync.commit()
 
     async def get_prompt_result(self, request_id: str):
         query = (
@@ -452,7 +446,6 @@ class PromptTableOperation:
                 "additional_analyses_prompt_result": additional_analyses_prompt_result,
             },
         )
-        self.conn_sync.commit()
 
     async def get_additional_analyses_prompt_result(
         self, request_id: str, user_id: str
@@ -478,7 +471,6 @@ class PromptTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "status": status}
         )
-        self.conn_sync.commit()
 
     async def get_request_status(self, request_id: str, user_id: str):
         query = f"""select status from {self.table_name} where user_id = :user_id and id = :request_id"""
@@ -532,10 +524,8 @@ class PromptTableOperation:
             i: datetime.strptime(j, "%Y-%m-%d") for i, j in update_dct.items()
         }  # update dct is {req_id: date_str}
         for req_id, dt in update_dct.items():
-            q = f"""update {self.table_name} set last_accessed_at = :date where id = :req_id"""
-            self.conn_sync.execute(text(q), {"date": dt, "req_id": req_id})
-
-        self.conn_sync.commit()
+            query = f"""update {self.table_name} set last_accessed_at = :date where id = :req_id"""
+            self.conn_sync.execute(text(query), {"date": dt, "req_id": req_id})
 
     def get_least_accessed_request_ids_sync(self, thres_days):
 
@@ -562,7 +552,6 @@ class PromptTableOperation:
                 "new_count": current_retry_count + 1,
             },
         )
-        self.conn_sync.commit()
 
     def check_rate_limit_retry_count(self, user_id, request_id):
 
@@ -580,7 +569,6 @@ class PromptTableOperation:
         self.conn_sync.execute(
             text(query), {"user_id": user_id, "request_id": request_id}
         )
-        self.conn_sync.commit()
 
 
 class TaskRunTableOperation:
@@ -617,7 +605,6 @@ class TaskRunTableOperation:
                 "created_at": get_current_time_utc(),
             },
         )
-        self.conn_sync.commit()
 
     def update_task_result_sync(self, request_id: str, tasks: str):
 
@@ -626,7 +613,6 @@ class TaskRunTableOperation:
                    where request_id = :request_id"""
 
         self.conn_sync.execute(text(query), {"request_id": request_id, "tasks": tasks})
-        self.conn_sync.commit()
 
     def update_original_common_task_result_sync(self, request_id: str, tasks: str):
 
@@ -635,7 +621,6 @@ class TaskRunTableOperation:
                    where request_id = :request_id"""
 
         self.conn_sync.execute(text(query), {"request_id": request_id, "tasks": tasks})
-        self.conn_sync.commit()
 
     def update_column_transform_task_status_sync(
         self, request_id, column_transforms_status
@@ -652,7 +637,6 @@ class TaskRunTableOperation:
                 "column_transforms_status": column_transforms_status,
             },
         )
-        self.conn_sync.commit()
 
     def update_column_combination_task_status_sync(
         self, request_id, column_combinations_status
@@ -669,7 +653,6 @@ class TaskRunTableOperation:
                 "column_combinations_status": column_combinations_status,
             },
         )
-        self.conn_sync.commit()
 
     def update_final_dataset_snippet_sync(self, request_id, dataset_snippet):
 
@@ -680,7 +663,6 @@ class TaskRunTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "dataset_snippet": dataset_snippet}
         )
-        self.conn_sync.commit()
 
     def update_columns_info_sync(self, request_id, columns_info):
 
@@ -691,7 +673,6 @@ class TaskRunTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "columns_info": columns_info}
         )
-        self.conn_sync.commit()
 
     async def get_original_tasks_by_id(self, user_id: int, request_id: str):
         query = f"""select original_common_tasks from {self.table_name} 
@@ -754,13 +735,13 @@ class TaskRunTableOperation:
         return res._mapping if res else None
 
     def get_task_by_id_sync(self, user_id: int, request_id: str):
-        query = f"""select original_common_tasks, common_tasks_w_result from {self.table_name} where user_id = :user_id and request_id = :request_id"""
+        query = f"""select original_common_tasks from {self.table_name} where user_id = :user_id and request_id = :request_id"""
 
         res = self.conn_sync.execute(
             text(query), {"user_id": user_id, "request_id": request_id}
         )
         res = res.fetchone()
-        return res._mapping if res else None
+        return res._mapping["original_common_tasks"] if res else None
 
     def request_id_exists(self, request_id: str):
         query = f"""select request_id from {self.table_name} where request_id = :request_id"""

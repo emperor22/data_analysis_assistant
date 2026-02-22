@@ -2,13 +2,14 @@ import pytest
 import json
 from app.tasks import (
     get_prompt_result_task,
+    get_additional_analyses_prompt_result,
     data_processing_task,
     TaskStatus,
     TaskProcessingRunType,
 )
 
 
-def test_get_prompt_result_task(monkeypatch, mocker, get_prompt_result_data):
+def test_get_prompt_result_task(mocker, get_prompt_result_data):
 
     model = get_prompt_result_data["model"]
     task_count = get_prompt_result_data["task_count"]
@@ -35,6 +36,8 @@ def test_get_prompt_result_task(monkeypatch, mocker, get_prompt_result_data):
         dataset_cols=dataset_cols,
         mock_pt1_resp_file=resp_pt1_file,
         mock_pt2_resp_file=resp_pt2_file,
+        api_key="xxx",
+        provider="cerebras",
     )
 
     last_update_status_call = mock_change_request_status_sync.call_args_list[-1].kwargs
@@ -42,6 +45,47 @@ def test_get_prompt_result_task(monkeypatch, mocker, get_prompt_result_data):
     assert (
         last_update_status_call["status"]
         == TaskStatus.initial_request_prompt_received.value
+    ), 'last status change must be "prompt received"'
+
+    # assert if res looks correct
+    assert isinstance(res, dict), "task result must be a dict"
+    assert len(res) > 0, "task result cannot be an empty dict"
+
+
+def test_get_additional_analyses_prompt_result_task(
+    mocker, get_additional_analyses_prompt_result_data
+):
+
+    mock_addt_request_resp_file = get_additional_analyses_prompt_result_data[
+        "mock_addt_request_resp_file"
+    ]
+    model = get_additional_analyses_prompt_result_data["model"]
+    api_key = get_additional_analyses_prompt_result_data["api_key"]
+    provider = get_additional_analyses_prompt_result_data["provider"]
+    new_tasks_prompt = get_additional_analyses_prompt_result_data["new_tasks_prompt"]
+    request_id = get_additional_analyses_prompt_result_data["request_id"]
+    user_id = get_additional_analyses_prompt_result_data["user_id"]
+
+    mock_change_request_status_sync = mocker.patch(
+        "app.tasks.PromptTableOperation.change_request_status_sync"
+    )
+    mocker.patch("app.tasks.PromptTableOperation.get_prompt_result_sync")
+
+    res = get_additional_analyses_prompt_result(
+        model=model,
+        provider=provider,
+        api_key=api_key,
+        new_tasks_prompt=new_tasks_prompt,
+        request_id=request_id,
+        user_id=user_id,
+        mock_addt_request_resp_file=mock_addt_request_resp_file,
+    )
+
+    last_update_status_call = mock_change_request_status_sync.call_args_list[-1].kwargs
+
+    assert (
+        last_update_status_call["status"]
+        == TaskStatus.additional_analysis_prompt_result_received.value
     ), 'last status change must be "prompt received"'
 
     # assert if res looks correct
@@ -66,37 +110,39 @@ run_types = [
 
 
 @pytest.mark.parametrize("run_type", run_types)
-def test_data_processing_task(
-    mocker, data_processing_task_first_run_flow_data, run_type
-):
+def test_data_processing_task(mocker, data_processing_task_data, run_type):
 
-    user_id = data_processing_task_first_run_flow_data["user_id"]
-    request_id = data_processing_task_first_run_flow_data["request_id"]
+    user_id = data_processing_task_data["user_id"]
+    request_id = data_processing_task_data["request_id"]
+    run_info = data_processing_task_data["run_info"]
 
-    data_tasks_dict_first_req = data_processing_task_first_run_flow_data[
-        "data_tasks_dict_first_req"
+    original_tasks_to_be_joined_w_addt_analyses = data_processing_task_data[
+        "original_tasks_to_be_joined_w_addt_analyses"
     ]
-    data_tasks_dict_mdfd_tasks = data_processing_task_first_run_flow_data[
-        "data_tasks_dict_mdfd_tasks"
-    ]
-    data_tasks_dict_addt_analyses = data_processing_task_first_run_flow_data[
+
+    data_tasks_dict_first_req = data_processing_task_data["data_tasks_dict_first_req"]
+    data_tasks_dict_mdfd_tasks = data_processing_task_data["data_tasks_dict_mdfd_tasks"]
+    data_tasks_dict_addt_analyses = data_processing_task_data[
         "data_tasks_dict_addt_analyses"
     ]
-    data_tasks_dict_mdfd_tasks_new_dataset = data_processing_task_first_run_flow_data[
+    data_tasks_dict_mdfd_tasks_new_dataset = data_processing_task_data[
         "data_tasks_dict_mdfd_tasks_new_dataset"
     ]
-
-    run_info = data_processing_task_first_run_flow_data["run_info"]
 
     mock_change_request_status_sync = mocker.patch(
         "app.tasks.PromptTableOperation.change_request_status_sync"
     )
 
-    mock_task_run_table_ops = mocker.patch("app.tasks.TaskRunTableOperation")
-    mock_task_run_table_ops.return_value.request_id_exists.return_value = False
+    mock_task_run_table_ops = mocker.patch(
+        "app.tasks.TaskRunTableOperation"
+    ).return_value  # patch the returned instance
+    mock_task_run_table_ops.request_id_exists.return_value = False
+    mock_task_run_table_ops.get_task_by_id_sync.return_value = (
+        original_tasks_to_be_joined_w_addt_analyses
+    )
 
-    mocker.patch("app.services.save_dataset_req_id")
-    mocker.patch("app.services.result_save_handler")
+    mocker.patch("app.services.dataset.save_dataset_req_id")
+    mocker.patch("app.services.analysis.result_save_handler")
 
     data_tasks_dct = {
         TaskProcessingRunType.first_run_after_request.value: data_tasks_dict_first_req,
@@ -122,8 +168,6 @@ def test_data_processing_task(
     data_tasks = data_tasks_dct[run_type]
 
     _ = data_processing_task(data_tasks, run_info, run_type)
-
-    mock_task_run_table_ops = mock_task_run_table_ops.return_value
 
     if run_type == TaskProcessingRunType.first_run_after_request.value:
         mock_task_run_table_ops.add_task_result_sync.assert_called_once_with(

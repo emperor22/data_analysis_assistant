@@ -280,6 +280,17 @@ def cleanup_agg_col_names(resp_pt_2, resp_pt_1):
     return json.loads(json_str)
 
 
+async def check_if_api_key_valid(key, provider):
+    validate_func_dct = {
+        "google": check_if_api_key_valid_google,
+        "cerebras": check_if_api_key_valid_cerebras,
+    }
+
+    func = validate_func_dct[provider]
+
+    return await func(key)
+
+
 async def get_api_key(user_table_ops: UserTableOperation, user_id, provider):
     default_api_key = api_key_dct[provider]
     user_api_key = await user_table_ops.get_api_key(user_id, provider)

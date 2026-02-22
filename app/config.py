@@ -37,6 +37,7 @@ TEST_DEFAULT_OTP = "000000"
 
 class Configs(BaseSettings):
     # api.py
+    ENV: str
     SENTRY_DSN: str
 
     WARN_FOR_SLOW_RESPONSE_TIME: bool = True

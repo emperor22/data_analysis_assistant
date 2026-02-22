@@ -19,8 +19,7 @@ from app.services.dataset import (
 )
 from app.services.llm import (
     DatasetProcessorForPtOnePrompt,
-    check_if_api_key_valid_cerebras,
-    check_if_api_key_valid_google,
+    check_if_api_key_valid,
     get_api_key,
 )
 from app.services.infra import (
@@ -33,9 +32,7 @@ from app.services.infra import (
     get_col_transform_and_combination,
     init_sentry,
 )
-from app.services.utils import (
-    split_and_validate_new_prompt,
-)
+from app.services.utils import split_and_validate_new_prompt, dataset_columns_match
 from app.exceptions import InvalidDatasetException, FileReadException
 
 
@@ -148,39 +145,6 @@ async def read_root(request: Request):
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
 async def health_check(request: Request):
     return {"detail": "app is running"}
-
-
-@app.post("/delete_task/{request_id}")
-@limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
-@check_if_task_is_valid
-async def delete_task(
-    request: Request,
-    request_id: str,
-    current_user=Depends(get_current_user),
-    prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops),
-    user_cust_tasks_table_ops: UserCustomizedTasksTableOperation = Depends(
-        get_user_customized_tasks_table_ops
-    ),
-    task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops),
-):
-    user_id = current_user.user_id
-
-    await user_cust_tasks_table_ops.delete_task(user_id=user_id, request_id=request_id)
-    await task_run_table_ops.delete_task(user_id=user_id, request_id=request_id)
-    await prompt_table_ops.delete_task(user_id=user_id, request_id=request_id)
-
-    data_dir = f"{Config.DATASET_SAVE_PATH}/{request_id}"
-
-    if not os.path.exists(data_dir):
-        raise HTTPException(
-            status_code=400, detail="cannot find directory for the task deletion"
-        )
-
-    shutil.rmtree(data_dir)
-
-    logger.info(f"task deleted: request_id {request_id}, user_id {user_id}")
-
-    return {"detail": f"task {request_id} has been deleted"}
 
 
 @app.post("/upload_dataset")
@@ -312,10 +276,10 @@ async def upload(
     await user_cust_tasks_table_ops.add_request_id_to_table(user_id, request_id)
 
     logger.info(
-        f"initial task request added: request_id {request_id}, user_id {user_id}"
+        f"initial task_type request added: request_id {request_id}, user_id {user_id}"
     )
 
-    return {"detail": "request task executed"}
+    return {"detail": "request task_type executed"}
 
 
 @app.post("/execute_analyses/{request_id}")
@@ -395,10 +359,10 @@ async def execute_analyses(
     chain(*tasks).apply_async()
 
     logger.info(
-        f"modified task execution request added: request_id {request_id}, user_id {user_id}"
+        f"modified task_type execution request added: request_id {request_id}, user_id {user_id}"
     )
 
-    return {"detail": "analysis task executed"}
+    return {"detail": "analysis task_type executed"}
 
 
 @app.post("/execute_analyses_with_new_dataset/{request_id}")
@@ -431,7 +395,6 @@ async def execute_analyses_with_new_dataset(
         raise HTTPException(status_code=422, detail="invalid parameters")
 
     send_result_to_email = execute_analyses_data.send_result_to_email
-    parquet_file = f"{Config.DATASET_SAVE_PATH}/{request_id}/new_dataset.parquet"
 
     file_reader = CsvReader(upload_file=file)
     file_data = await run_in_threadpool(file_reader.get_dataframe_dict)
@@ -444,8 +407,8 @@ async def execute_analyses_with_new_dataset(
     )
 
     run_name = await prompt_table_ops.get_run_name(request_id, user_id)
-
-    if dataset_columns_str != original_columns_str:
+    logger.debug(f"XXXXX {dataset_columns_str}, {original_columns_str}")
+    if not dataset_columns_match(dataset_columns_str, original_columns_str):
         raise HTTPException(
             status_code=403,
             detail="this dataset does not have the columns from the original dataset",
@@ -507,10 +470,10 @@ async def execute_analyses_with_new_dataset(
     chain(*tasks).apply_async()
 
     logger.info(
-        f"modified task execution request with new dataset added: request_id {request_id}, user_id {user_id}"
+        f"modified task_type execution request with new dataset added: request_id {request_id}, user_id {user_id}"
     )
 
-    return {"detail": "analysis task executed"}
+    return {"detail": "analysis task_type executed"}
 
 
 @app.post("/make_additional_analyses_request/{request_id}")
@@ -615,6 +578,39 @@ async def make_additional_analyses_request(
     )
 
     return {"detail": "additional analyses request executed"}
+
+
+@app.post("/delete_task/{request_id}")
+@limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
+@check_if_task_is_valid
+async def delete_task(
+    request: Request,
+    request_id: str,
+    current_user=Depends(get_current_user),
+    prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops),
+    user_cust_tasks_table_ops: UserCustomizedTasksTableOperation = Depends(
+        get_user_customized_tasks_table_ops
+    ),
+    task_run_table_ops: TaskRunTableOperation = Depends(get_task_run_table_ops),
+):
+    user_id = current_user.user_id
+
+    await user_cust_tasks_table_ops.delete_task(user_id=user_id, request_id=request_id)
+    await task_run_table_ops.delete_task(user_id=user_id, request_id=request_id)
+    await prompt_table_ops.delete_task(user_id=user_id, request_id=request_id)
+
+    data_dir = f"{Config.DATASET_SAVE_PATH}/{request_id}"
+
+    if not os.path.exists(data_dir):
+        raise HTTPException(
+            status_code=404, detail="cannot find directory for the task_type deletion"
+        )
+
+    shutil.rmtree(data_dir)
+
+    logger.info(f"task_type deleted: request_id {request_id}, user_id {user_id}")
+
+    return {"detail": f"task_type {request_id} has been deleted"}
 
 
 @app.post("/join_dataset")
@@ -871,29 +867,29 @@ async def manage_user_customized_tasks(
         return {"detail": "update customized tasks operation successful"}
 
 
-@app.get("/download_excel_result/{task}/{request_id}/{task_id}")
+@app.get("/download_excel_result/{task_type}/{request_id}/{task_id}")
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
 @check_if_task_is_valid
 async def download_excel_result(
     request: Request,
-    task: str,
+    task_type: str,
     request_id: str,
     task_id: int,
     current_user=Depends(get_current_user),
     prompt_table_ops: PromptTableOperation = Depends(get_prompt_table_ops),
 ):
-    if task not in ["original_tasks", "customized_tasks"]:
-        raise HTTPException(status_code=400, detail="not a valid task category")
+    if task_type not in ["original_tasks", "customized_tasks"]:
+        raise HTTPException(status_code=400, detail="not a valid task_type category")
 
     # task_id = secure_filename(str(task_id))
     # request_id = secure_filename(request_id)
 
     file_path = (
-        f"{Config.DATASET_SAVE_PATH}/{request_id}/{task}/artifacts/{task_id}.xlsx"
+        f"{Config.DATASET_SAVE_PATH}/{request_id}/{task_type}/artifacts/{task_id}.xlsx"
     )
 
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=400, detail="the requested file does not exist")
+        raise HTTPException(status_code=404, detail="the requested file does not exist")
 
     name = os.path.basename(file_path)
 
@@ -954,12 +950,16 @@ async def login(
     user = await user_table_ops.get_user(login_data.username)
     user_otp = user["otp"]
     username = user["username"]
+    otp_expire = user["otp_expire"]
+
+    if isinstance(otp_expire, str):
+        otp_expire = datetime.fromisoformat(otp_expire)
 
     if not user or not verify_otp(login_data.otp, user_otp):
         logger.warning(f"user {login_data.username} failed to log in")
         raise HTTPException(status_code=401, detail="Incorrect username")
 
-    if datetime.now(timezone.utc) > user["otp_expire"]:
+    if datetime.now(timezone.utc) > otp_expire:
         raise HTTPException(
             status_code=401, detail="Expired OTP. Please generate a new one."
         )
@@ -1031,13 +1031,7 @@ async def setup_api_key(
         await user_table_ops.delete_api_key(user_id, provider)
         return {"detail": "api key deleted"}
 
-    validate_func_dct = {
-        "google": check_if_api_key_valid_google,
-        "cerebras": check_if_api_key_valid_cerebras,
-    }
-    check_if_api_key_valid = validate_func_dct[provider]
-
-    check_result = await check_if_api_key_valid(key)
+    check_result = await check_if_api_key_valid(key, provider)
 
     if check_result == "INVALID_KEY":
         raise HTTPException(status_code=400, detail="invalid api key")

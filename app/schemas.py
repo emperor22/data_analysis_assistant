@@ -231,16 +231,16 @@ class CommonColumnCleaningOrTransformationModel(BaseModel):
 class ColumnModel(BaseModel):
     name: str
     classification: Literal[
-        "Identifier",
-        "Dimensional",
-        "Metric",
-        "Temporal",
-        "Geospatial",
-        "Scientific",
-        "Descriptive",
-        "PII",
-        "System/Metadata",
-        "Unknown",
+        "identifier",
+        "dimensional",
+        "metric",
+        "temporal",
+        "geospatial",
+        "scientific",
+        "descriptive",
+        "pii",
+        "system/metadata",
+        "unknown",
     ]
     confidence_score: Literal["low", "medium", "high", "inapplicable"]
     data_type: Literal["string", "integer", "float", "datetime"]
@@ -249,6 +249,11 @@ class ColumnModel(BaseModel):
     expected_values: str | List[str | int | float] = []
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("classification", mode="before")
+    @classmethod
+    def make_classification_lowercase(cls, classification: str):
+        return classification.lower()
 
 
 class FilterStepModel(BaseModel):

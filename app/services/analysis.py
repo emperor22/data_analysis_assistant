@@ -398,10 +398,9 @@ class DataAnalysisProcessor:
             )
 
     def _get_original_tasks_and_merge(self, new_tasks):
-        tasks_by_id = self.task_run_table_ops.get_task_by_id_sync(
+        original_common_tasks = self.task_run_table_ops.get_task_by_id_sync(
             user_id=self.user_id, request_id=self.request_id
         )
-        original_common_tasks = tasks_by_id["original_common_tasks"]
         original_common_tasks = json.loads(original_common_tasks)[
             "tasks"
         ]  # a list of common tasks

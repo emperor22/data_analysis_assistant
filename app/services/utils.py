@@ -25,3 +25,7 @@ def split_and_validate_new_prompt(prompt):
 
 def get_current_time_utc():
     return datetime.now(timezone.utc)
+
+
+def dataset_columns_match(dataset_columns_str, original_columns_str):
+    return dataset_columns_str == original_columns_str

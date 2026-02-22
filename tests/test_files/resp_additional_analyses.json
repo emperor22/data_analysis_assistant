@@ -1,50 +1,45 @@
 {
     "common_tasks": [
-        {
-            "name": "Identify top 5 best-rated American movies",
-            "task_id": 11,
-            "description": "Filter for movies available in the United States and identify the top 5 with the highest IMDb scores.",
+                {
+            "name": "Proportion of Sales by Product Category",
+            "task_id": 9,
+            "description": "Determine the percentage contribution of each product category to the total sales, highlighting major revenue streams.",
             "steps": [
                 {
-                    "function": "filter",
-                    "column_name": "series_or_movie",
-                    "operator": "in",
-                    "values": [
-                        "movie"
-                    ]
-                },
-                {
-                    "function": "filter",
-                    "column_name": "country_availability",
-                    "operator": "in",
-                    "values": [
-                        "united states"
-                    ]
-                },
-                {
-                    "function": "get_top_or_bottom_N_entries",
-                    "sort_by_column_name": "imdb_score",
-                    "order": "top",
-                    "number_of_entries": 5,
-                    "return_columns": [
-                        "title",
-                        "imdb_score",
-                        "country_availability"
+                    "function": "get_proportion",
+                    "column_name": [
+                        "category"
                     ]
                 }
             ],
-            "score": "high"
+            "score": "medium"
         },
         {
-            "name": "inapplicable",
-            "task_id": 12,
-            "description": "inapplicable",
+            "name": "Average Sales and Quantity per City for 'Expedited' Shipping Tier",
+            "task_id": 10,
+            "description": "Calculate the average sales and quantity per city for orders that utilized the 'Expedited' shipping tier to identify high-volume expedited shipping locations.",
             "steps": [
                 {
-                    "function": "inapplicable"
+                    "function": "filter",
+                    "column_name": "shipping_tier",
+                    "operator": "in",
+                    "values": [
+                        "Expedited"
+                    ]
+                },
+                {
+                    "function": "groupby",
+                    "columns_to_group_by": [
+                        "city"
+                    ],
+                    "columns_to_aggregate": [
+                        "sales",
+                        "quantity"
+                    ],
+                    "calculation": "mean"
                 }
             ],
-            "score": "inapplicable"
+            "score": "medium"
         }
     ]
 }

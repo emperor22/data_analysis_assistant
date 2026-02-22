@@ -230,7 +230,7 @@ def get_prompt_result_task(
 
     engine = self.get_engine()
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         prompt_table_ops.change_request_status_sync(
             request_id=request_id,
@@ -409,7 +409,7 @@ def get_additional_analyses_prompt_result(
     new_tasks_prompt,
     request_id,
     user_id,
-    debug_prompt_and_res=True,
+    debug_prompt_and_res=False,
     mock_addt_request_resp_file=None,
 ):
 
@@ -423,37 +423,37 @@ def get_additional_analyses_prompt_result(
 
     engine = self.get_engine()
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         prompt_table_ops.change_request_status_sync(
             request_id=request_id,
             status=TaskStatus.waiting_for_additional_analysis_prompt_result.value,
         )
 
-        resp_pt_1 = prompt_table_ops.get_prompt_result_sync(
-            request_id=request_id, user_id=user_id
-        )
-
-        resp_pt_1 = json.loads(resp_pt_1["prompt_result"])
-
-        context_json = {}
-        for field in [
-            "columns",
-            "common_column_cleaning_or_transformation",
-            "common_column_combination",
-        ]:
-            context_json[field] = resp_pt_1[field]
-
-        context = {
-            "context_json": json.dumps(context_json),
-            "new_tasks_prompt": new_tasks_prompt,
-            "current_time": datetime.now().strftime("%H:%M:%S"),
-        }
-        prompt = insert_prompt_context(prompt_file=prompt_template, context=context)
-
         if mock_addt_request_resp_file:
             resp = mock_resp_loader(mock_addt_request_resp_file, pt="addt_analyses")
         else:
+            resp_pt_1 = prompt_table_ops.get_prompt_result_sync(
+                request_id=request_id, user_id=user_id
+            )
+
+            resp_pt_1 = json.loads(resp_pt_1["prompt_result"])
+
+            context_json = {}
+            for field in [
+                "columns",
+                "common_column_cleaning_or_transformation",
+                "common_column_combination",
+            ]:
+                context_json[field] = resp_pt_1[field]
+
+            context = {
+                "context_json": json.dumps(context_json),
+                "new_tasks_prompt": new_tasks_prompt,
+                "current_time": datetime.now().strftime("%H:%M:%S"),
+            }
+            prompt = insert_prompt_context(prompt_file=prompt_template, context=context)
+
             try:
                 resp = resp_loader(prompt, model, provider, api_key)
             except RateLimitedException:
@@ -568,7 +568,7 @@ def data_processing_task(self, data_tasks_dict, run_info, run_type):
 
     engine = self.get_engine()
 
-    with engine.connect() as conn:
+    with engine.begin() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         task_run_table_ops = TaskRunTableOperation(conn_sync=conn)
 
@@ -632,7 +632,7 @@ def update_last_accessed_at_db():
         )
         req_id_last_accessed_dct = redis_client.hgetall(temp_hashtable_name)
 
-        with base_engine_sync.connect() as conn:
+        with base_engine_sync.begin() as conn:
             prompt_table_ops = PromptTableOperation(conn_sync=conn)
             prompt_table_ops.update_last_accessed_column_sync(req_id_last_accessed_dct)
 
@@ -646,7 +646,7 @@ def update_last_accessed_at_db():
 def cleanup_unused_datasets():
     THRES_DELETE_UNUSED_DATASETS_DAYS = 7
 
-    with base_engine_sync.connect() as conn:
+    with base_engine_sync.begin() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         res = prompt_table_ops.get_least_accessed_request_ids_sync(
             THRES_DELETE_UNUSED_DATASETS_DAYS
@@ -658,7 +658,7 @@ def cleanup_unused_datasets():
             if os.path.exists(path_delete):
                 shutil.rmtree(path_delete)
 
-            with base_engine_sync.connect() as conn:
+            with base_engine_sync.begin() as conn:
                 prompt_table_ops = PromptTableOperation(conn_sync=conn)
                 res = prompt_table_ops.change_request_status_sync(
                     req_id, TaskStatus.deleted_because_not_accessed_recently.value

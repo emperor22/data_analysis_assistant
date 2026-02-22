@@ -29,6 +29,26 @@ jobs:
       - run: |
           ruff check .
           ruff format --check .
+      - run: |
+          export REDIS_PASSWORD='xxxxxx'
+          export DATABASE_URL_ASYNC='xxxxxx'
+          export DATABASE_URL_SYNC='xxxxxx'
+
+          export LLM_API_KEY_GOOGLE='xxxxxx'
+          export LLM_API_KEY_CEREBRAS='xxxxxx'
+
+          export EMAIL_USERNAME='xxxxxx'
+          export EMAIL_PASSWORD='xxxxxx'
+          export EMAIL_SERVER='xxxxxx'
+
+          export SECRET_KEY='xxxxxx'
+
+          export API_KEY_ENCRYPTION_KEY='xxxxxx'
+          export API_URL='xxxxxx'
+
+          export PUBLIC_URL='xxxxxx'
+
+          pytest tests
 
   build-and-push-docker:
     name: Build & Push Multi-Arch Images
