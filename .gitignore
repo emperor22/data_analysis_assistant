@@ -62,5 +62,3 @@ resp_jsons/
 test_dataset/
 app_data/
 app/datasets
-app_data/datasets
-*.csv
