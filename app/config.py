@@ -17,24 +17,6 @@ DEFAULT_VERSION_CUSTOMIZED_TASKS = 1
 #####################################
 
 
-# conftest.py
-
-TEST_DB_URL_ASYNC = "sqlite+aiosqlite:///./testing_xx.sqlite"
-TEST_DB_URL_SYNC = "sqlite:///./testing_xx.sqlite"
-
-TEST_UUID = "xxxx-xxxx-xxxx-xxxx"
-
-TEST_DEFAULT_MODEL = "gemini-2.5-flash"
-TEST_DEFAULT_DATASET_FILE = (
-    "tests/test_files/1_netflix-rotten-tomatoes-metacritic-imdb.csv"
-)
-TEST_DEFAULT_CLEAN_DATASET_FILE = "tests/test_files/clean_dataset.parquet"
-TEST_DEFAULT_TASK_COUNT = 10
-TEST_PROMPT_VERSION = 3
-
-TEST_DEFAULT_OTP = "000000"
-
-
 class Configs(BaseSettings):
     # api.py
     ENV: str
