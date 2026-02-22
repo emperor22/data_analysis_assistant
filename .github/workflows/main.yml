@@ -9,22 +9,6 @@ on:
 env:
   PYTHON_VERSION: '3.10.9'
 
-  ENV: 'XXXXXX'
-  SENTRY_DSN: 'XXXXXX'
-  REDIS_URL: 'XXXXXX'
-  REDIS_PASSWORD: 'XXXXXX'
-  DATABASE_URL_ASYNC: 'postgresql+asyncpg://xxxxxx:xxxxxx@xxxxxx.com/xxxxxx'
-  DATABASE_URL_SYNC: 'postgresql+psycopg://xxxxxx:xxxxxx@xxxxxx.com/xxxxxx'
-  LLM_API_KEY_GOOGLE: 'XXXXXX'
-  LLM_API_KEY_CEREBRAS: 'XXXXXX'
-  EMAIL_USERNAME: 'XXXXXX'
-  EMAIL_PASSWORD: 'XXXXXX'
-  EMAIL_SERVER: 'XXXXXX'
-  SECRET_KEY: 'XXXXXX'
-  API_KEY_ENCRYPTION_KEY: 'gfGpxUvae5woY2c56EE5zBpycGsx5nNMV-Rzbad3Dpg='
-  API_URL: 'XXXXXX'
-  PUBLIC_URL: 'XXXXXX'
-
 jobs:
   lint-and-test:
     name: Lint & Test
@@ -45,6 +29,7 @@ jobs:
       - run: |
           ruff check .
           ruff format --check .
+      - run: echo "${{ secrets.ENV_FILE }}" > .env.local
       - run: |
           pytest tests
 
