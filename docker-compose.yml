@@ -61,7 +61,7 @@ services:
     build:
       context: .
       dockerfile: ./streamlit_app/Dockerfile
-    command: streamlit run streamlit_app/Home.py --server.port 8501 --server.enableCORS true
+    command: streamlit run streamlit_app/Homepage.py --server.port 8501 --server.enableCORS true
     expose:
       - 8501
     networks:
