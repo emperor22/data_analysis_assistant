@@ -26,7 +26,7 @@ model_list = [*model_list_cerebras, *model_list_google]
 
 
 first_req_tab, additional_req_tab, api_key_setup_tab = st.tabs(
-    ["Create data analysis request", "Request aditional analyses", "Setup API Key"]
+    ["Create data analysis request", "Request additional analyses", "Setup API Key"]
 )
 
 with first_req_tab:

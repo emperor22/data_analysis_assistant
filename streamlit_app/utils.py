@@ -80,7 +80,7 @@ def show_unauthorized_error_and_redirect_to_login():
     st.session_state["access_token"] = None
     st.error("session expired. please log in again.")
     time.sleep(1)
-    st.switch_page("home.py")
+    st.switch_page("Homepage.py")
 
 
 def remove_duplicate_tasks(tasks):
@@ -668,7 +668,7 @@ def render_progress_table():
             st.write(req_filename)
         with prog_col:
             if req_status not in failed_states:
-                st.progress(value=progress_value[req_status], text=req_status)
+                st.progress(value=progress_value.get(req_status), text=req_status)
             else:
                 st.error(req_status)
 
