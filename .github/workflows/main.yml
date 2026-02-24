@@ -29,7 +29,10 @@ jobs:
       - run: |
           ruff check .
           ruff format --check .
-      - run: echo "${{ secrets.ENV_FILE }}" > .env.local
+      - run: |
+            cat <<EOF > .env.local
+            ${{ secrets.ENV_FILE }}
+            EOF
       - run: |
           pytest tests
 
