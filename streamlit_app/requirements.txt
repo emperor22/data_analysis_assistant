@@ -2,3 +2,4 @@ streamlit
 pandas
 pyarrow
 streamlit-autorefresh
+python-dotenv
