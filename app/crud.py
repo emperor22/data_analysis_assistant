@@ -16,6 +16,7 @@ import redis
 
 from app.config import Config
 from app.services.utils import get_current_time_utc
+from app.schemas import TaskStatus
 
 import json
 
@@ -58,6 +59,7 @@ class AppUsers(Base):
     created_at = Column(DateTime(timezone=True))
     api_key_cerebras = Column(String)
     api_key_google = Column(String)
+    api_key_openrouter = Column(String)
 
 
 class PromptAndResult(Base):
@@ -141,10 +143,12 @@ class BlacklistedDatasetsTableOperation:
                 "last_failed_at": get_current_time_utc(),
             },
         )
+        self.conn_sync.commit()
 
     def remove_dataset_from_table(self, dataset_id):
         query = f"""delete from {self.table_name} where dataset_id = :dataset_id"""
         self.conn_sync.execute(text(query), {"dataset_id": dataset_id})
+        self.conn_sync.commit()
 
     def increment_failed_attempt(self, dataset_id):
         cur_failed_attempt = self.get_failed_attempt_count(dataset_id)
@@ -156,12 +160,14 @@ class BlacklistedDatasetsTableOperation:
             text(query),
             {"dataset_id": dataset_id, "new_failed_attempts": cur_failed_attempt + 1},
         )
+        self.conn_sync.commit()
 
     def reset_failed_attempt_count(self, dataset_id):
         query = f"""update {self.table_name}
                    set failed_attempts = 0
                    where dataset_id = :dataset_id"""
         self.conn_sync.execute(text(query), {"dataset_id": dataset_id})
+        self.conn_sync.commit()
 
     def get_failed_attempt_count(self, dataset_id):
         query = f"""select failed_attempts from {self.table_name} where dataset_id = :dataset_id"""
@@ -186,6 +192,7 @@ class BlacklistedDatasetsTableOperation:
                    set is_blacklisted = true
                    where dataset_id = :dataset_id"""
         self.conn_sync.execute(text(query), {"dataset_id": dataset_id})
+        self.conn_sync.commit()
 
 
 class UserCustomizedTasksTableOperation:
@@ -288,24 +295,18 @@ class UserTableOperation:
         self.table_name = "app_user"
 
     async def add_api_key(self, user_id, key, provider):
-        if provider not in Config.LLM_PROVIDER_LIST:
-            return None
 
         query = f"""update {self.table_name} set api_key_{provider} = :key where id = :user_id"""
 
         await self.conn.execute(text(query), {"key": key, "user_id": user_id})
 
     async def delete_api_key(self, user_id, provider):
-        if provider not in Config.LLM_PROVIDER_LIST:
-            return None
 
         query = f"""update {self.table_name} set api_key_{provider} = NULL where id = :user_id"""
 
         await self.conn.execute(text(query), {"user_id": user_id})
 
     async def get_api_key(self, user_id, provider):
-        if provider not in Config.LLM_PROVIDER_LIST:
-            return None
 
         col = f"api_key_{provider}"
         query = f"""select {col} from {self.table_name} where id = :user_id"""
@@ -375,8 +376,8 @@ class PromptTableOperation:
     ):
 
         req_id = str(uuid.uuid4())
-        query = f"""insert into {self.table_name}(id, user_id, run_name, prompt_version, filename, dataset_cols, model, created_at, last_accessed_at)
-                    values (:id, :user_id, :run_name, :prompt_version, :filename, :dataset_cols, :model, :created_at, :last_accessed_at)"""
+        query = f"""insert into {self.table_name}(id, user_id, run_name, prompt_version, filename, dataset_cols, model, created_at, status, last_accessed_at)
+                    values (:id, :user_id, :run_name, :prompt_version, :filename, :dataset_cols, :model, :created_at, :status, :last_accessed_at)"""
         await self.conn.execute(
             text(query),
             {
@@ -388,6 +389,7 @@ class PromptTableOperation:
                 "dataset_cols": dataset_cols,
                 "model": model,
                 "created_at": get_current_time_utc(),
+                "status": TaskStatus.task_queued.value,
                 "last_accessed_at": get_current_time_utc(),
             },
         )
@@ -411,6 +413,7 @@ class PromptTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "prompt_result": prompt_result}
         )
+        self.conn_sync.commit()
 
     async def get_prompt_result(self, request_id: str):
         query = (
@@ -446,6 +449,7 @@ class PromptTableOperation:
                 "additional_analyses_prompt_result": additional_analyses_prompt_result,
             },
         )
+        self.conn_sync.commit()
 
     async def get_additional_analyses_prompt_result(
         self, request_id: str, user_id: str
@@ -471,6 +475,7 @@ class PromptTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "status": status}
         )
+        self.conn_sync.commit()
 
     async def get_request_status(self, request_id: str, user_id: str):
         query = f"""select status from {self.table_name} where user_id = :user_id and id = :request_id"""
@@ -500,10 +505,14 @@ class PromptTableOperation:
         return res._mapping["run_name"] if res else None
 
     async def get_request_ids_by_user(self, user_id: str):
-        query = f"""select id, run_name, filename, status from {self.table_name} where user_id = :user_id"""
+        query = f"""select id, run_name, filename, created_at, status from {self.table_name} where user_id = :user_id"""
         res = await self.conn.execute(text(query), {"user_id": user_id})
         res = res.fetchall()
-        return [(i.id, i.run_name, i.filename, i.status) for i in res] if res else None
+        return (
+            [(i.id, i.run_name, i.filename, i.created_at, i.status) for i in res]
+            if res
+            else None
+        )
 
     async def get_dataset_columns_by_id(self, request_id: str, user_id: str):
         query = f"""select dataset_cols from {self.table_name} where user_id = :user_id and id = :request_id"""
@@ -525,11 +534,13 @@ class PromptTableOperation:
         }  # update dct is {req_id: date_str}
         for req_id, dt in update_dct.items():
             query = f"""update {self.table_name} set last_accessed_at = :date where id = :req_id"""
-            self.conn_sync.execute(text(query), {"date": dt, "req_id": req_id})
+            self.conn_sync.execute(
+                text(query), {"date": dt, "req_id": req_id}
+            )  # no explicit commit because its used with conn.begin()
 
     def get_least_accessed_request_ids_sync(self, thres_days):
 
-        date_filt = (date.today() - timedelta(days=thres_days)).srtftime("%Y-%m-%d")
+        date_filt = (date.today() - timedelta(days=thres_days)).strftime("%Y-%m-%d")
 
         query = (
             f"""select id from {self.table_name} where last_accessed_at < :date_filt"""
@@ -537,7 +548,7 @@ class PromptTableOperation:
 
         res = self.conn_sync.execute(text(query), {"date_filt": date_filt})
         res = res.fetchall()
-        return res._mapping["id"] if res else None
+        return [row._mapping["id"] for row in res] if res else None
 
     def increment_rate_limit_retry_count_sync(self, user_id, request_id):
 
@@ -552,6 +563,7 @@ class PromptTableOperation:
                 "new_count": current_retry_count + 1,
             },
         )
+        self.conn_sync.commit()
 
     def check_rate_limit_retry_count(self, user_id, request_id):
 
@@ -569,6 +581,7 @@ class PromptTableOperation:
         self.conn_sync.execute(
             text(query), {"user_id": user_id, "request_id": request_id}
         )
+        self.conn_sync.commit()
 
 
 class TaskRunTableOperation:
@@ -605,6 +618,7 @@ class TaskRunTableOperation:
                 "created_at": get_current_time_utc(),
             },
         )
+        self.conn_sync.commit()
 
     def update_task_result_sync(self, request_id: str, tasks: str):
 
@@ -613,6 +627,7 @@ class TaskRunTableOperation:
                    where request_id = :request_id"""
 
         self.conn_sync.execute(text(query), {"request_id": request_id, "tasks": tasks})
+        self.conn_sync.commit()
 
     def update_original_common_task_result_sync(self, request_id: str, tasks: str):
 
@@ -621,6 +636,7 @@ class TaskRunTableOperation:
                    where request_id = :request_id"""
 
         self.conn_sync.execute(text(query), {"request_id": request_id, "tasks": tasks})
+        self.conn_sync.commit()
 
     def update_column_transform_task_status_sync(
         self, request_id, column_transforms_status
@@ -637,6 +653,7 @@ class TaskRunTableOperation:
                 "column_transforms_status": column_transforms_status,
             },
         )
+        self.conn_sync.commit()
 
     def update_column_combination_task_status_sync(
         self, request_id, column_combinations_status
@@ -653,6 +670,7 @@ class TaskRunTableOperation:
                 "column_combinations_status": column_combinations_status,
             },
         )
+        self.conn_sync.commit()
 
     def update_final_dataset_snippet_sync(self, request_id, dataset_snippet):
 
@@ -663,6 +681,7 @@ class TaskRunTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "dataset_snippet": dataset_snippet}
         )
+        self.conn_sync.commit()
 
     def update_columns_info_sync(self, request_id, columns_info):
 
@@ -673,6 +692,7 @@ class TaskRunTableOperation:
         self.conn_sync.execute(
             text(query), {"request_id": request_id, "columns_info": columns_info}
         )
+        self.conn_sync.commit()
 
     async def get_original_tasks_by_id(self, user_id: int, request_id: str):
         query = f"""select original_common_tasks from {self.table_name} 

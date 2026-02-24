@@ -121,6 +121,11 @@ jobs:
 
             export DOCKERHUB_USERNAME="${{ secrets.DOCKERHUB_USERNAME }}"
             export REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}"
+
+            cat <<EOF > .env.local
+            ${{ secrets.ENV_FILE_PROD }}
+            EOF
+
             docker compose pull
             docker compose run --rm fastapi_app alembic upgrade head
             docker compose up -d

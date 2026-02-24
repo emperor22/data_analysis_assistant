@@ -13,9 +13,12 @@ from enum import Enum
 from app.logger import logger
 from app.config import Config, model_list_dct
 from dataclasses import dataclass
+from ast import literal_eval
 
 
 class TaskStatus(Enum):
+    task_queued = "TASK QUEUED"
+
     waiting_for_initial_request_prompt = "GETTING INITIAL REQUEST PROMPT RESULT"
     waiting_for_additional_analysis_prompt_result = (
         "GETTING ADDITIONAL ANALYSES REQUEST PROMPT RESULT"
@@ -84,7 +87,7 @@ class UserRegisterSchema(BaseModel):
 
 
 class ModelAndProviderSchema(BaseModel):
-    provider: Literal[tuple(Config.LLM_PROVIDER_LIST)]  # type: ignore
+    provider: Literal[tuple(literal_eval(Config.LLM_PROVIDER_LIST))]  # type: ignore
     model: str
 
     @model_validator(mode="after")
@@ -129,7 +132,7 @@ class AdditionalAnalysesRequestSchema(ModelAndProviderSchema):
 
 class SetupAPIKeySchema(BaseModel):
     key: str
-    provider: Literal[tuple(Config.LLM_PROVIDER_LIST)]  # type: ignore
+    provider: Literal[tuple(literal_eval(Config.LLM_PROVIDER_LIST))]  # type: ignore
 
 
 class JoinDatasetSchema(BaseModel):

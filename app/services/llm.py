@@ -86,6 +86,35 @@ def generate_headers_cerebras(key):
     return headers
 
 
+def generate_payload_google(prompt):
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    return payload
+
+
+def generate_headers_google(key):
+    headers = {"Content-Type": "application/json", "X-goog-api-key": key}
+    return headers
+
+
+def generate_headers_openrouter(key):
+    headers = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+    return headers
+
+
+def generate_payload_openrouter(model, prompt):
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "reasoning": {"enabled": False},
+    }
+
+    return payload
+
+
 @logger.catch(reraise=True)
 def get_prompt_result_cerebras(prompt, model, key):
     url = Config.LLM_ENDPOINT_CEREBRAS
@@ -95,6 +124,42 @@ def get_prompt_result_cerebras(prompt, model, key):
     payload = generate_payload_cerebras(model, prompt)
 
     response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code == 429:
+        raise RateLimitedException
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+@logger.catch(reraise=True)
+def get_prompt_result_google(prompt, model, key):
+    url = Config.LLM_ENDPOINT_GOOGLE
+
+    url = url.format(model)
+
+    payload = generate_payload_google(prompt)
+
+    headers = generate_headers_google(key)
+
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code == 429:
+        raise RateLimitedException
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+def get_prompt_result_openrouter(prompt, model, key):
+    url = Config.LLM_ENDPOINT_OPENROUTER
+
+    payload = generate_payload_openrouter(model, prompt)
+    headers = generate_headers_openrouter(key)
+
+    response = requests.post(url, json=payload, headers=headers)
 
     if response.status_code == 429:
         raise RateLimitedException
@@ -125,20 +190,10 @@ async def check_if_api_key_valid_cerebras(key):
     return "VALID_KEY"
 
 
-def generate_payload_google(prompt):
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
-    return payload
-
-
-def generate_headers_google(key):
-    headers = {"Content-Type": "application/json", "X-goog-api-key": key}
-    return headers
-
-
 async def check_if_api_key_valid_google(key):
-    model = "gemini-2.5-flash-lite"
-    url = "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent"
+    model = "gemma-3-27b-it"
+
+    url = Config.LLM_ENDPOINT_GOOGLE
     url = url.format(model)
 
     prompt = "what year is it? answer promptly"
@@ -158,29 +213,48 @@ async def check_if_api_key_valid_google(key):
     return "VALID_KEY"
 
 
-@logger.catch(reraise=True)
-def get_prompt_result_google(prompt, model, key):
-    url = Config.LLM_ENDPOINT_GOOGLE
+async def check_if_api_key_valid_openrouter(key):
+    model = "meta-llama/llama-3.2-1b-instruct"
 
+    url = Config.LLM_ENDPOINT_OPENROUTER
     url = url.format(model)
 
-    payload = generate_payload_google(prompt)
+    prompt = "what year is it? answer promptly"
 
-    headers = generate_headers_google(key)
+    payload = generate_payload_openrouter(prompt)
+    headers = generate_headers_openrouter(key)
 
-    response = requests.post(url, json=payload, headers=headers)
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=payload)
 
-    if response.status_code == 429:
-        raise RateLimitedException
+    if response.status_code == 503:
+        return "TRY_LATER"
 
-    response.raise_for_status()
+    if response.status_code in (400, 401, 403):
+        return "INVALID_KEY"
 
-    return response.json()
+    return "VALID_KEY"
 
 
 @logger.catch
 def process_llm_api_response_google(resp: dict):
     resp["candidates"][0]["content"]["parts"][0]["text"]
+
+    if "```json" in resp:
+        resp = re.search(r"```json\s*(.*?)\s*```", resp, re.DOTALL)
+        resp = resp.group(1).strip()
+
+    resp = json.loads(resp)
+
+    # prompt_token_count = resp['usage_metadata']['promptTokenCount']
+    # total_token_count = resp['usage_metadata']['totalTokenCount']
+
+    return resp
+
+
+@logger.catch
+def process_llm_api_response_openrouter(resp: dict):
+    resp = resp["choices"][0]["message"]["content"]
 
     if "```json" in resp:
         resp = re.search(r"```json\s*(.*?)\s*```", resp, re.DOTALL)
@@ -213,11 +287,13 @@ def process_llm_api_response_cerebras(resp: dict):
 LLM_PROVIDER_DCT = {
     "google": get_prompt_result_google,
     "cerebras": get_prompt_result_cerebras,
+    "openrouter": get_prompt_result_openrouter,
 }
 
 LLM_RESP_PROCESSOR_DCT = {
     "google": process_llm_api_response_google,
     "cerebras": process_llm_api_response_cerebras,
+    "openrouter": process_llm_api_response_openrouter,
 }
 
 
@@ -284,6 +360,7 @@ async def check_if_api_key_valid(key, provider):
     validate_func_dct = {
         "google": check_if_api_key_valid_google,
         "cerebras": check_if_api_key_valid_cerebras,
+        "openrouter": check_if_api_key_valid_openrouter,
     }
 
     func = validate_func_dct[provider]

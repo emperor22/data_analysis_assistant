@@ -20,7 +20,7 @@ import os
 # nltk.download('averaged_perceptron_tagger_eng')
 
 default_url = "http://localhost:8000"
-URL = os.environ.get("API_URL", default_url)
+URL = os.getenv("API_URL", default_url)
 
 
 DEFAULT_VERSION_CUSTOMIZED_TASKS = 1
@@ -130,6 +130,10 @@ def include_auth_header(func):
                 print(res.text)
                 return
 
+        if res.status_code == 429:
+            st.error("You've been rate limited on this request.")
+            return
+
         if res.status_code == 401:
             show_unauthorized_error_and_redirect_to_login()
 
@@ -181,6 +185,7 @@ def get_modified_tasks_by_id(task_id, headers=None):
 
 def is_task_still_processing(status):
     processing_status = (
+        "TASK QUEUED",
         "GETTING INITIAL REQUEST PROMPT RESULT",
         "RUNNING INITIAL ANALYSES TASKS",
         "INITIAL REQUEST PROMPT RESULT RECEIVED",
@@ -234,11 +239,10 @@ def render_request_ids():
         if not task_ids:
             st.stop()
 
+        task_ids = [i for i in task_ids if not is_task_still_processing(i[-1])]
         task_ids_choices = [""] + [
-            f"{i[1]} - Filename: {i[2]}"
-            for i in task_ids
-            if not is_task_still_processing(i[2])
-        ]  # get first value which is the task id
+            f"{i[1]} --- {i[2]} --- {i[3][:10]}" for i in task_ids
+        ]
 
         task_ids_select = st.selectbox(
             "Select task", options=task_ids_choices, key="task_id_select"
@@ -640,35 +644,53 @@ def display_b64_encoded_image(img_string):
 
 
 def render_progress_table():
+
+    def truncate_text(text, max_len=15):
+        if len(text) >= max_len:
+            return text[:max_len] + ".."
+        return text
+
     res = get_task_ids_by_user_uncached()
 
     if not res:
         st.error("You don't have any tasks.")
         return
 
-    req_id_col, req_name_col, req_filename_col, prog_col = st.columns(4)
+    req_id_col, req_name_col, req_filename_col, date_col, prog_col = st.columns(5)
 
     with req_id_col:
-        st.write("Request ID")
+        st.write("**Request ID**")
     with req_name_col:
-        st.write("Name")
+        st.write("**Name**")
     with req_filename_col:
-        st.write("Filename")
+        st.write("**Filename**")
+    with date_col:
+        st.write("**Created at**")
     with prog_col:
-        st.write("Progress")
+        st.write("**Progress**")
 
     res = res["request_ids"]
 
-    for req_id, req_name, req_filename, req_status in res:
+    for req_id, req_name, req_filename, req_date, req_status in res:
+        st.write("---")
         with req_id_col:
-            st.write(req_id)
+            st.write(truncate_text(req_id))
+            st.write("")
         with req_name_col:
-            st.write(req_name)
+            st.write(truncate_text(req_name))
+            st.write("")
         with req_filename_col:
-            st.write(req_filename)
+            st.write(truncate_text(req_filename))
+            st.write("")
+        with date_col:
+            st.write(req_date[:10])  # truncate date text
+            st.write("")
         with prog_col:
             if req_status not in failed_states:
-                st.progress(value=progress_value.get(req_status), text=req_status)
+                st.progress(
+                    value=progress_value.get(req_status),
+                    text=req_status if req_status else "",
+                )
             else:
                 st.error(req_status)
 
@@ -762,6 +784,7 @@ DEFAULT_PARAMS = {
 }
 
 initial_request_flow = {
+    "TASK QUEUED": 0.0,
     "GETTING INITIAL REQUEST PROMPT RESULT": 1 / 4,
     "INITIAL REQUEST PROMPT RESULT RECEIVED": 2 / 4,
     "RUNNING INITIAL ANALYSES TASKS": 3 / 4,

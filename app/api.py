@@ -407,7 +407,7 @@ async def execute_analyses_with_new_dataset(
     )
 
     run_name = await prompt_table_ops.get_run_name(request_id, user_id)
-    logger.debug(f"XXXXX {dataset_columns_str}, {original_columns_str}")
+
     if not dataset_columns_match(dataset_columns_str, original_columns_str):
         raise HTTPException(
             status_code=403,
@@ -1015,7 +1015,7 @@ async def register_user(
 
 
 @app.post("/setup_api_key")
-@limiter.limit(Config.RATE_LIMIT_REGISTER)
+@limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
 async def setup_api_key(
     request: Request,
     api_key_data: SetupAPIKeySchema,

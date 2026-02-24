@@ -41,7 +41,7 @@ TEST_UUID = "xxxx-xxxx-xxxx-xxxx"
 TEST_USERNAME = "emperor22"
 TEST_EMAIL = "algiffaryriony@gmail.com"
 
-TEST_DEFAULT_MODEL = "gemini-2.5-flash"
+TEST_DEFAULT_MODEL = "gemini-3-flash"
 TEST_DEFAULT_API_KEY = "xxxxx"
 TEST_DEFAULT_LLM_PROVIDER = "google"
 

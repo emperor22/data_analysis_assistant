@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from ast import literal_eval
 
 
 ######################################
@@ -47,6 +48,8 @@ class Configs(BaseSettings):
     THRES_SLOW_ADDITIONAL_ANALYSES_REQUEST_PROCESS_TIME_MS: int = 45 * 1000
     THRES_SLOW_TASK_EXECUTION_PROCESS_TIME_MS: int = 7 * 1000
 
+    THRES_DELETE_UNUSED_DATASET_DAYS: int = 7
+
     API_URL: str
     PUBLIC_URL: str
 
@@ -82,9 +85,16 @@ class Configs(BaseSettings):
     LLM_API_KEY_CEREBRAS: str
     LLM_ENDPOINT_CEREBRAS: str = "https://api.cerebras.ai/v1/chat/completions"
 
+    LLM_API_KEY_OPENROUTER: str
+    LLM_ENDPOINT_OPENROUTER: str = "https://openrouter.ai/api/v1/chat/completions"
+
+    LLM_MODEL_LIST_GOOGLE: str
+    LLM_MODEL_LIST_CEREBRAS: str
+    LLM_MODEL_LIST_OPENROUTER: str
+
     DEFAULT_LLM_PROVIDER: str = "cerebras"
 
-    LLM_PROVIDER_LIST: list = ["google", "cerebras"]
+    LLM_PROVIDER_LIST: str
 
     EMAIL_USERNAME: str
     EMAIL_PASSWORD: str
@@ -105,8 +115,7 @@ class Configs(BaseSettings):
     MAX_DATAFRAME_COLS_JOIN_UTIL: int = 10
 
     # logger.py
-    LOG_LEVEL_STDERR: str = "DEBUG"
-    LOG_LEVEL_fILE: str = "DEBUG"
+    LOG_LEVEL: str
 
     # auth.py
     SECRET_KEY: str
@@ -130,19 +139,8 @@ class Configs(BaseSettings):
     MIN_VALID_COMMON_TASKS_FIRST_RUN: int = 5
     MIN_VALID_COMMON_TASKS_SUBSEQUENT_RUNS: int = 1
 
-    LLM_MODEL_LIST_GOOGLE: list = [
-        "gemini-2.5-flash",
-        "gemma-3-27b-it",
-        "gemini-2.5-flash-lite",
-    ]
-    LLM_MODEL_LIST_CEREBRAS: list = [
-        "qwen-3-235b-a22b-instruct-2507",
-        "qwen-3-32b",
-        "gpt-oss-120b",
-        "zai-glm-4.7",
-    ]
-
     MAX_TASK_COUNT: int = 20
+    DEFAULT_TASK_COUNT: int
 
     model_config = SettingsConfigDict(env_file=".env.local")
 
@@ -155,13 +153,15 @@ def get_config() -> Configs:
 Config = get_config()
 
 model_list_dct = {
-    "google": Config.LLM_MODEL_LIST_GOOGLE,
-    "cerebras": Config.LLM_MODEL_LIST_CEREBRAS,
+    "google": literal_eval(Config.LLM_MODEL_LIST_GOOGLE),
+    "cerebras": literal_eval(Config.LLM_MODEL_LIST_CEREBRAS),
+    "openrouter": literal_eval(Config.LLM_MODEL_LIST_OPENROUTER),
 }
 
 api_key_dct = {
     "google": Config.LLM_API_KEY_GOOGLE,
     "cerebras": Config.LLM_API_KEY_CEREBRAS,
+    "openrouter": Config.LLM_API_KEY_OPENROUTER,
 }
 
 PARAMS_MAP = {

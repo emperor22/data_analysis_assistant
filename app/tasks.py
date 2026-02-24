@@ -71,6 +71,7 @@ def init_sentry(**_kwargs):
         dsn=Config.SENTRY_DSN,
         send_default_pii=True,
         integrations=[CeleryIntegration(monitor_beat_tasks=False)],
+        enable_logs=True,
     )
 
 
@@ -230,7 +231,7 @@ def get_prompt_result_task(
 
     engine = self.get_engine()
 
-    with engine.begin() as conn:
+    with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         prompt_table_ops.change_request_status_sync(
             request_id=request_id,
@@ -423,7 +424,7 @@ def get_additional_analyses_prompt_result(
 
     engine = self.get_engine()
 
-    with engine.begin() as conn:
+    with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         prompt_table_ops.change_request_status_sync(
             request_id=request_id,
@@ -568,7 +569,7 @@ def data_processing_task(self, data_tasks_dict, run_info, run_type):
 
     engine = self.get_engine()
 
-    with engine.begin() as conn:
+    with engine.connect() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         task_run_table_ops = TaskRunTableOperation(conn_sync=conn)
 
@@ -624,7 +625,7 @@ def data_processing_task(self, data_tasks_dict, run_info, run_type):
 def update_last_accessed_at_db():
     try:
         conn_pool = redis.ConnectionPool.from_url(Config.REDIS_URL)
-        redis_client = redis.Redis(connection_pool=conn_pool)
+        redis_client = redis.Redis(connection_pool=conn_pool, decode_responses=True)
 
         temp_hashtable_name = f"{Config.REDIS_LAST_ACCESSED_HASHTABLE_NAME}_temp"
         redis_client.rename(
@@ -637,6 +638,10 @@ def update_last_accessed_at_db():
             prompt_table_ops.update_last_accessed_column_sync(req_id_last_accessed_dct)
 
         redis_client.delete(temp_hashtable_name)
+    except redis.exceptions.ResponseError:
+        logger.error(
+            "cannot find last accessed hashtable on redis on update_last_accessed_at celery task"
+        )
     finally:
         conn_pool.disconnect()
 
@@ -644,24 +649,27 @@ def update_last_accessed_at_db():
 # runs at first of each month
 @app.task
 def cleanup_unused_datasets():
-    THRES_DELETE_UNUSED_DATASETS_DAYS = 7
 
     with base_engine_sync.begin() as conn:
         prompt_table_ops = PromptTableOperation(conn_sync=conn)
         res = prompt_table_ops.get_least_accessed_request_ids_sync(
-            THRES_DELETE_UNUSED_DATASETS_DAYS
+            Config.THRES_DELETE_UNUSED_DATASET_DAYS
         )
 
     if res:
-        for req_id in res:
-            path_delete = f"{Config.DATASET_SAVE_PATH}/{req_id}"
-            if os.path.exists(path_delete):
-                shutil.rmtree(path_delete)
-
-            with base_engine_sync.begin() as conn:
+        # change status to deleted
+        with base_engine_sync.begin() as conn:
+            for req_id in res:
                 prompt_table_ops = PromptTableOperation(conn_sync=conn)
-                res = prompt_table_ops.change_request_status_sync(
+                prompt_table_ops.change_request_status_sync(
                     req_id, TaskStatus.deleted_because_not_accessed_recently.value
                 )
+
+        # delete files
+        for req_id in res:
+            path_delete = f"{Config.DATASET_SAVE_PATH}/{req_id}"
+
+            if os.path.exists(path_delete):
+                shutil.rmtree(path_delete)
 
             logger.info(f"deleted {req_id} files on cleanup function")

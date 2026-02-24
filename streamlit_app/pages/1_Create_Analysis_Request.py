@@ -7,22 +7,36 @@ from utils import (
     setup_api_key,
 )
 import time
+import os
+from ast import literal_eval
+from dotenv import load_dotenv
 
+load_dotenv(dotenv_path=".env.local.")
 
-LLM_MODEL_LIST_GOOGLE = ["gemini-2.5-flash", "gemma-3-27b-it", "gemini-2.5-flash-lite"]
-LLM_MODEL_LIST_CEREBRAS = [
-    "gpt-oss-120b",
-    "qwen-3-235b-a22b-instruct-2507",
-    "zai-glm-4.7",
-]
-LLM_PROVIDERS = ["google", "cerebras"]
+LLM_MODEL_LIST_GOOGLE = os.getenv("LLM_MODEL_LIST_GOOGLE")
+LLM_MODEL_LIST_GOOGLE = literal_eval(LLM_MODEL_LIST_GOOGLE)
 
-DEFAULT_TASK_COUNT = 15
+LLM_MODEL_LIST_CEREBRAS = os.getenv("LLM_MODEL_LIST_CEREBRAS")
+LLM_MODEL_LIST_CEREBRAS = literal_eval(LLM_MODEL_LIST_CEREBRAS)
+
+LLM_MODEL_LIST_OPENROUTER = os.getenv("LLM_MODEL_LIST_OPENROUTER")
+LLM_MODEL_LIST_OPENROUTER = literal_eval(LLM_MODEL_LIST_OPENROUTER)
+
+LLM_PROVIDER_LIST = os.getenv("LLM_PROVIDER_LIST")
+LLM_PROVIDER_LIST = literal_eval(LLM_PROVIDER_LIST)
+
+DEFAULT_TASK_COUNT = os.getenv("DEFAULT_TASK_COUNT")
+DEFAULT_TASK_COUNT = int(DEFAULT_TASK_COUNT)
 
 model_list_google = [f"google:{i}" for i in LLM_MODEL_LIST_GOOGLE]
 model_list_cerebras = [f"cerebras:{i}" for i in LLM_MODEL_LIST_CEREBRAS]
+model_list_openrouter = [f"openrouter:{i}" for i in LLM_MODEL_LIST_OPENROUTER]
 
-model_list = [*model_list_cerebras, *model_list_google]
+model_list = [
+    *model_list_openrouter,
+    *model_list_cerebras,
+    *model_list_google,
+]
 
 
 first_req_tab, additional_req_tab, api_key_setup_tab = st.tabs(
@@ -72,7 +86,7 @@ with api_key_setup_tab:
     api_key_setup_form = st.form("api_key_setup_form", enter_to_submit=False)
 
     with api_key_setup_form:
-        api_provider = st.selectbox("Select provider", LLM_PROVIDERS)
+        api_provider = st.selectbox("Select provider", LLM_PROVIDER_LIST)
         api_key = st.text_input("API key")
         st.caption("Leaving API key empty will delete your stored key (if any)")
         if st.form_submit_button("Add API key"):
