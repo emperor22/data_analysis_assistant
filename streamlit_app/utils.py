@@ -226,6 +226,26 @@ def is_valid_email(email):
         return False
 
 
+def render_task_id_data(req_id_data):
+
+    def pad_or_truncate(x, ln):
+        if len(x) <= ln:
+            pad = " " * (ln - len(x))
+            return x + pad
+        return x[: ln - 2] + "..."
+
+    ln = 20
+
+    name = req_id_data[1]
+    name = pad_or_truncate(name, ln)
+
+    filename = req_id_data[2]
+    filename = pad_or_truncate(filename, ln)
+
+    date = req_id_data[3][:10]  # get only the date from datetime str
+    return f"{name} | {filename} | {date}"
+
+
 def render_request_ids():
     task_ids = get_task_ids_by_user()
     task_ids = task_ids["request_ids"]
@@ -240,9 +260,7 @@ def render_request_ids():
             st.stop()
 
         task_ids = [i for i in task_ids if not is_task_still_processing(i[-1])]
-        task_ids_choices = [""] + [
-            f"{i[1]} --- {i[2]} --- {i[3][:10]}" for i in task_ids
-        ]
+        task_ids_choices = [""] + [render_task_id_data(i) for i in task_ids]
 
         task_ids_select = st.selectbox(
             "Select task", options=task_ids_choices, key="task_id_select"
@@ -688,7 +706,7 @@ def render_progress_table():
         with prog_col:
             if req_status not in failed_states:
                 st.progress(
-                    value=progress_value.get(req_status),
+                    value=progress_value.get(req_status, 0),
                     text=req_status if req_status else "",
                 )
             else:
