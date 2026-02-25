@@ -248,12 +248,12 @@ def render_task_id_data(req_id_data):
 
 def render_request_ids():
     task_ids = get_task_ids_by_user()
-    
+
     if not task_ids:
         st.stop()
-    
-    task_ids = task_ids.get('request_ids')
-    
+
+    task_ids = task_ids.get("request_ids")
+
     col1, col2 = st.columns([12, 1])
 
     with col2:
@@ -679,11 +679,16 @@ def render_progress_table():
         st.error("You don't have any tasks.")
         return
 
-
     cols = st.columns(5)
-    headers = ['**Request ID**', '**Name**', '**Filename**', '**Created At**', '**Progress**']
+    headers = [
+        "**Request ID**",
+        "**Name**",
+        "**Filename**",
+        "**Created At**",
+        "**Progress**",
+    ]
     [col.write(val) for col, val in zip(cols, headers)]
-    st.write('***')
+    st.write("***")
 
     res = res["request_ids"]
 
@@ -693,15 +698,15 @@ def render_progress_table():
         cols[1].write(truncate_text(req_name))
         cols[2].write(truncate_text(req_filename))
         cols[3].write(truncate_text(req_date))
-        
+
         if req_status not in failed_states:
             cols[4].progress(
                 value=progress_value.get(req_status, 0),
                 text=req_status if req_status else "",
-                )
+            )
         else:
             st.error(req_status)
-        st.write('***')
+        st.write("***")
 
 
 PARAMS_MAP = {
