@@ -697,7 +697,7 @@ def render_progress_table():
         cols[0].write(truncate_text(req_id))
         cols[1].write(truncate_text(req_name))
         cols[2].write(truncate_text(req_filename))
-        cols[3].write(truncate_text(req_date))
+        cols[3].write(req_date[:10])  # only get date from datetime str
 
         if req_status not in failed_states:
             cols[4].progress(

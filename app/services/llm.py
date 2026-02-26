@@ -221,7 +221,7 @@ async def check_if_api_key_valid_openrouter(key):
 
     prompt = "what year is it? answer promptly"
 
-    payload = generate_payload_openrouter(prompt)
+    payload = generate_payload_openrouter(model, prompt)
     headers = generate_headers_openrouter(key)
 
     async with httpx.AsyncClient() as client:

@@ -33,8 +33,8 @@ model_list_cerebras = [f"cerebras:{i}" for i in LLM_MODEL_LIST_CEREBRAS]
 model_list_openrouter = [f"openrouter:{i}" for i in LLM_MODEL_LIST_OPENROUTER]
 
 model_list = [
-    *model_list_openrouter,
     *model_list_cerebras,
+    *model_list_openrouter,
     *model_list_google,
 ]
 
@@ -51,7 +51,11 @@ with first_req_tab:
         file = st.file_uploader(
             "Select your dataset file", accept_multiple_files=False, type=["csv"]
         )
-        model = st.selectbox("Select model", model_list)
+        model = st.selectbox(
+            "Select model",
+            model_list,
+            help="Cerebras models are the fastest. Openrouter models are good, but will be slow. Google models are heavily rate limited.",
+        )
 
         send_result_to_email = st.checkbox("Send result to email", value=True)
 
