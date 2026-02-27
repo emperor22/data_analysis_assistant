@@ -54,7 +54,7 @@ with first_req_tab:
         model = st.selectbox(
             "Select model",
             model_list,
-            help="Cerebras models are the fastest. Openrouter models are good, but will be slow. Google models are heavily rate limited.",
+            help="Cerebras models are the fastest. Openrouter models are good, but will be slow. Google models are good, but heavily rate limited.",
         )
 
         send_result_to_email = st.checkbox("Send result to email", value=True)

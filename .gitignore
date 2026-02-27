@@ -20,6 +20,7 @@ pip-delete-this-file.txt
 
 
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -57,6 +58,7 @@ docs/_build/
 .env
 .env.*
 *.code-workspace
+README.md
 
 resp_jsons/
 test_dataset/

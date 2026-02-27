@@ -202,10 +202,10 @@ def init_db():
 
     yield
 
-    # testing_db_engine.dispose()
+    testing_db_engine.dispose()
 
-    # if os.path.exists(db_path):
-    #     os.remove(db_path)
+    if os.path.exists(db_path):
+        os.remove(db_path)
 
 
 @pytest.fixture(scope="function")

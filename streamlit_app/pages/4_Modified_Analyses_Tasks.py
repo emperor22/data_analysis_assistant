@@ -21,6 +21,11 @@ import time
 from string import Template
 from random import randint
 
+
+from utils import get_dataset_snippet_by_id, render_col_info
+from io import StringIO
+import pandas as pd
+
 cols_per_row = 1
 max_task_count = 30
 
@@ -133,7 +138,6 @@ with task_edit_tab:
         with current_cols[task_idx % cols_per_row]:
             with st.container(border=True):
                 col1, col2, col3, col4 = st.columns([10, 1, 1, 1])
-
                 with col1:
                     if st.checkbox(
                         "Edit name/description", key=f"edit_name_desc_{task_idx}"
@@ -155,6 +159,10 @@ with task_edit_tab:
                                 st.session_state.modified_tasks[request_id][task_idx][
                                     "description"
                                 ] = task_desc_change
+
+                                st.success("task name/description changed!")
+                                time.sleep(1)
+                                st.rerun()
 
                     del_dup_msg = st.empty()
 
@@ -390,3 +398,33 @@ with task_result_tab:
             modified_tasks_plots,
             task_mode="customized_tasks",
         )
+
+
+with st.sidebar:
+    if st.checkbox("Show dataset info"):
+        col_infos = get_col_info_by_id(task_id=request_id)
+        col_infos = json.loads(col_infos["columns_info"])
+        col_infos = col_infos["columns_info"]
+
+        data_snippet = get_dataset_snippet_by_id(task_id=request_id)
+        data_snippet = data_snippet["final_dataset_snippet"]
+
+        st.subheader("Dataset Snippet")
+        st.write(pd.read_csv(StringIO(data_snippet)))
+        st.write("")
+
+        st.subheader("Columns overview")
+        st.write("")
+
+        search_col = None
+        if st.checkbox("Search column"):
+            col_names = [i["name"] for i in col_infos]
+            search_col = st.selectbox("Enter column name", options=[""] + col_names)
+
+            if search_col:
+                col_infos = [i for i in col_infos if i["name"] == search_col]
+
+        st.write("")
+
+        for col_info in col_infos:
+            render_col_info(col_info)
