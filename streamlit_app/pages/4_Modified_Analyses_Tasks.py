@@ -373,33 +373,6 @@ with task_overview_tab:
             st.rerun()
 
 
-with task_result_tab:
-    st.button("Refresh result")
-    st.write("")
-
-    res_modified_tasks = get_modified_tasks_by_id(request_id)
-
-    if not res_modified_tasks:
-        st.error(
-            "you need to run the customized tasks first or the result is still being processed"
-        )
-        st.stop()
-
-    modified_tasks_w_result = res_modified_tasks["res"]["common_tasks_w_result"]
-    modified_tasks_w_result = json.loads(modified_tasks_w_result)["tasks"]
-
-    modified_tasks_plots = res_modified_tasks["plot_result"]
-
-    for task_idx, task in enumerate(modified_tasks_w_result):
-        render_original_task_expander(
-            request_id,
-            task,
-            task_idx,
-            modified_tasks_plots,
-            task_mode="customized_tasks",
-        )
-
-
 with st.sidebar:
     if st.checkbox("Show dataset info"):
         col_infos = get_col_info_by_id(task_id=request_id)
@@ -428,3 +401,30 @@ with st.sidebar:
 
         for col_info in col_infos:
             render_col_info(col_info)
+
+
+with task_result_tab:
+    st.button("Refresh result")
+    st.write("")
+
+    res_modified_tasks = get_modified_tasks_by_id(request_id)
+
+    if not res_modified_tasks:
+        st.error(
+            "you need to run the customized tasks first or the result is still being processed"
+        )
+        st.stop()
+
+    modified_tasks_w_result = res_modified_tasks["res"]["common_tasks_w_result"]
+    modified_tasks_w_result = json.loads(modified_tasks_w_result)["tasks"]
+
+    modified_tasks_plots = res_modified_tasks["plot_result"]
+
+    for task_idx, task in enumerate(modified_tasks_w_result):
+        render_original_task_expander(
+            request_id,
+            task,
+            task_idx,
+            modified_tasks_plots,
+            task_mode="customized_tasks",
+        )

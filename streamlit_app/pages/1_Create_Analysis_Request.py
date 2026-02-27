@@ -49,7 +49,10 @@ with first_req_tab:
     with analysis_req_form:
         name = st.text_input("Enter name for your run", max_chars=50)
         file = st.file_uploader(
-            "Select your dataset file", accept_multiple_files=False, type=["csv"], max_upload_size=50
+            "Select your dataset file",
+            accept_multiple_files=False,
+            type=["csv"],
+            max_upload_size=50,
         )
         model = st.selectbox(
             "Select model",

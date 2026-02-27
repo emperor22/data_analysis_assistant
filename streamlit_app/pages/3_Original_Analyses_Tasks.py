@@ -17,9 +17,6 @@ if st.sidebar.checkbox("Filter score"):
         "Select scores", ["low", "medium", "high"], default=["low", "medium", "high"]
     )
 
-show_failed_task = st.sidebar.checkbox("Show failed tasks")
-
-
 if "tasks" not in st.session_state:
     st.session_state.tasks = {}
     st.session_state.tasks_plots = {}
