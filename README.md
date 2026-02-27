@@ -8,13 +8,11 @@ converts dataset metadata into schema-constrained analytical workflows, **valida
 
 LLM output is treated as untrusted planning data. Validation and execution are strictly separated to ensure safety, reproducibility, and operational control.
 
----
 
 ## Live Demo
 
 🔗 [LINK](https://161.118.227.185/)
 
----
 
 ## Workflow Lifecycle
 
@@ -31,7 +29,6 @@ LLM output is treated as untrusted planning data. Validation and execution are s
 7. Optional ZIP archive (PDF summary + Excel outputs) delivered via email
 8. Tasks may be modified and re-run on the same or a new dataset
 
----
 
 ## Dataset Normalization & Profiling
 
@@ -46,7 +43,6 @@ Raw files are normalized before any LLM interaction.
 
 The LLM receives structured metadata and never raw CSV text.
 
----
 
 ## Prompt Orchestration
 
@@ -61,7 +57,6 @@ LLM planning occurs in a controlled, stateful pipeline.
 
 No prompt result advances without validation and persistence.
 
----
 
 ## LLM Validation Engine
 
@@ -77,7 +72,6 @@ Invalid steps are removed and logged with request context. Tasks are discarded o
 
 This preserves valid analytical intent while maintaining deterministic guarantees.
 
----
 
 ## Analytical DSL
 
@@ -93,7 +87,6 @@ All analyses execute through a closed, deterministic domain-specific language. N
 
 Every step and transformation is schema-validated before dispatch.
 
----
 
 ## Execution Engine
 
@@ -108,25 +101,35 @@ Validated workflows are executed step-by-step against a persisted dataset snapsh
 
 Execution never evaluates arbitrary code.
 
----
 
 ## Architecture
 
 Client
+
   ↓
+
 FastAPI (Auth + Rate Limit + Request Validation)
+
   ↓
+
 Dataset Normalization & Profiling
+
   ↓
+
 Celery IO Workers (LLM Planning)
+
   ↓
+
 Structured Validation & Filtering
+
   ↓
+
 Celery CPU Workers (Deterministic DSL Execution)
+
   ↓
+  
 Postgres + Artifact Storage + Optional Email Dispatch
 
----
 
 ## Operational Controls
 
@@ -140,7 +143,6 @@ Production safeguards around access, isolation, and workload discipline.
 * Structured request logging and slow-execution alerts
 * BYOK support with credential isolation
 
----
 
 ## Observability
 
@@ -151,7 +153,6 @@ Explicit runtime transparency and failure boundaries.
 * Deterministic task state transitions
 * Clear rejection paths for invalid workflows
 
----
 
 ## Technology Stack
 
@@ -164,7 +165,6 @@ Streamlit (workflow inspection and editing)
 **Infrastructure**
 Docker Compose · ARM64 builds · Nginx · GitHub Actions · Sentry
 
----
 
 ## Testing
 
