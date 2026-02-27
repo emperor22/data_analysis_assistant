@@ -58,7 +58,6 @@ docs/_build/
 .env
 .env.*
 *.code-workspace
-README.md
 
 resp_jsons/
 test_dataset/
