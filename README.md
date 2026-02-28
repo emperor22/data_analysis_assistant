@@ -149,7 +149,7 @@ Production safeguards around access, isolation, and workload discipline.
 Explicit runtime transparency and failure boundaries.
 
 * Centralized exception monitoring (Sentry)
-* Structured lifecycle logging with request correlation
+* Structured logging for easier error tracing
 * Deterministic task state transitions
 * Clear rejection paths for invalid workflows
 
@@ -173,7 +173,7 @@ Validation-first testing strategy across layers.
 * Async API endpoints coverage
 * Celery task validation (eager mode)
 * Dependency overrides for isolation
-* Temporary SQLite test database lifecycle
+* Temporary SQLite databae for testing
 
 Run:
 
