@@ -80,10 +80,10 @@ class GetCurrentUserModel(BaseModel):
 
 
 class UserRegisterSchema(BaseModel):
-    username: str = Field(min_length=3, max_length=15)
-    email: EmailStr
-    first_name: str = Field(min_length=3, max_length=15)
-    last_name: str = Field(min_length=3, max_length=15)
+    username: str = Field(min_length=3, max_length=10)
+    email: EmailStr = Field(min_length=5, max_length=40)
+    first_name: str = Field(min_length=3, max_length=20)
+    last_name: str = Field(min_length=3, max_length=20)
 
 
 class ModelAndProviderSchema(BaseModel):

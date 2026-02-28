@@ -13,8 +13,11 @@ LLM output is treated as untrusted planning data. Validation and execution are s
 
 🔗 [LINK](https://161.118.227.185/)
 
+Dataset collections you can try: [LINK](https://drive.google.com/drive/folders/1KezB3ABQDVa-mlVQ3sGW-GD97bg68rUp?usp=sharing)
 
 ## Workflow Lifecycle
+
+<video src="https://github.com/user-attachments/assets/27ba1b2e-854a-47d0-a5c9-8f311bd82120" width="800" height="400" controls></video>
 
 1. Upload dataset
 2. LLM generates a structured analytical workflow (JSON schema enforced)

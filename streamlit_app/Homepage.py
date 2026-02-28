@@ -22,7 +22,6 @@ st.markdown("""## Data Analysis Assistant
 login_tab, register_tab = st.tabs(["Login", "Register"])
 
 with login_tab:
-    st.markdown("**Login**")
     otp_form = st.form("otp_form", enter_to_submit=True)
 
     with otp_form:
@@ -67,10 +66,16 @@ with register_tab:
     register_form = st.form("register_form")
 
     with register_form:
-        username_reg = st.text_input("Username", max_chars=10)
-        first_name = st.text_input("First Name", max_chars=20)
-        last_name = st.text_input("Last Name", max_chars=20)
-        email = st.text_input("Email", max_chars=30)
+        username_reg = st.text_input(
+            "Username", max_chars=10, help="Min chars: 3, Max chars: 10"
+        )
+        first_name = st.text_input(
+            "First Name", max_chars=20, help="Min chars: 3, Max chars: 20"
+        )
+        last_name = st.text_input(
+            "Last Name", max_chars=20, help="Min chars: 3, Max chars: 20"
+        )
+        email = st.text_input("Email", max_chars=40, help="Min chars: 5, Max chars: 40")
         st.warning(
             "Please input a valid email as the OTPs for logins will be sent to your email."
         )
