@@ -109,8 +109,7 @@ import shutil
 
 init_sentry()
 
-
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address, storage_uri=Config.REDIS_URL)
 app = FastAPI()
 
 

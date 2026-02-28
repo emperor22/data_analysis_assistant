@@ -19,7 +19,6 @@ from email import encoders
 from functools import wraps
 
 from fastapi.exceptions import HTTPException
-
 from fastapi import BackgroundTasks, Request
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -246,17 +245,3 @@ def get_task_plot_results(request_id, run_type):
     ]
 
     return {task_id: image for task_id, image in zip(plot_task_ids, image_data)}
-
-
-# def custom_rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
-#     """
-#     Handles the RateLimitExceeded exception to return a custom JSON response.
-#     """
-#     return JSONResponse(
-#         status_code=429,
-#         content={"detail": "Too many requests. Please try again later.",
-#                  "retry_after": int(exc.retry_after)} # Access retry info from the exception
-#     )
-
-# # Register the custom handler
-# app.add_exception_handler(RateLimitExceeded, custom_rate_limit_exceeded_handler)

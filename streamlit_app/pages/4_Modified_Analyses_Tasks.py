@@ -116,7 +116,10 @@ ALL_COLUMNS = [col["name"] for col in dataset_cols["columns_info"]]
 
 customized_tasks = st.session_state.modified_tasks[request_id]
 if len(customized_tasks) > 0:
-    if st.button("Save customized tasks"):
+    st.caption(
+        "Saving a checkpoint of your tasks is recommended since you will lose your tasks if you reload the page."
+    )
+    if st.button("Save customized tasks checkpoint"):
         res = manage_customized_tasks(
             request_id, "update", tasks=customized_tasks, slot=1
         )

@@ -43,6 +43,10 @@ def register_user(username, first_name, last_name, email):
     if res.status_code == 422:
         return "invalid username/first name/last name"
 
+    if res.status_code == 429:
+        rate_limit_error = res.json()["error"]
+        st.error(rate_limit_error)
+
     return "success"
 
 
@@ -53,6 +57,12 @@ def submit_login_request(username, otp):
 
     if res.status_code == 401:
         return None
+
+    if res.status_code == 429:
+        rate_limit_error = res.json()["error"]
+        st.error(rate_limit_error)
+        st.stop()
+
     try:
         return res.json()
     except Exception:
@@ -132,7 +142,8 @@ def include_auth_header(func):
                 return
 
         if res.status_code == 429:
-            st.error("You've been rate limited on this request.")
+            rate_limit_msg = res.json()["error"]
+            st.error(rate_limit_msg)
             return
 
         if res.status_code == 401:

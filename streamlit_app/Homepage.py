@@ -49,8 +49,14 @@ with login_tab:
         otp = st.text_input("Input OTP", max_chars=6)
 
         if st.form_submit_button("Submit"):
+            if not username:
+                st.error("Please get your OTP first.")
+                time.sleep(1)
+                st.rerun()
+
             login_data = submit_login_request(username, otp)
             if login_data:
+                st.write(login_data)
                 st.session_state["access_token"] = login_data["access_token"]
                 st.session_state["authenticated"] = True
                 st.rerun()

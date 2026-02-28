@@ -37,10 +37,10 @@ class Configs(BaseSettings):
     )
     PT2_PROMPT_TEMPLATE: str = "app/prompts/split_prompt/prompt_part2.md"
 
-    RATE_LIMIT_GET_ENDPOINTS: str = "60/minute"
-    RATE_LIMIT_TASK_ENDPOINTS: str = "5/minute"
-    RATE_LIMIT_LOGIN: str = "5/5minute"
-    RATE_LIMIT_REGISTER: str = "2/hour"
+    RATE_LIMIT_GET_ENDPOINTS: str = "100/minute"
+    RATE_LIMIT_TASK_ENDPOINTS: str = "1/15second"
+    RATE_LIMIT_LOGIN: str = "3/minute"
+    RATE_LIMIT_REGISTER: str = "3/30minute"
 
     # tasks.py
 
