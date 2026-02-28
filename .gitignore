@@ -18,6 +18,8 @@ wheels/
 pip-log.txt
 pip-delete-this-file.txt
 
+commands_to_run_services.txt
+
 
 .pytest_cache/
 .ruff_cache/

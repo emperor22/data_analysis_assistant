@@ -103,7 +103,7 @@ Execution never evaluates arbitrary code.
 
 
 ## Architecture
-
+```
   Client
 
     ↓
@@ -129,7 +129,7 @@ Celery CPU Workers (Deterministic DSL Execution)
     ↓
   
 Postgres + Artifact Storage + Optional Email Dispatch
-
+```
 
 ## Operational Controls
 
