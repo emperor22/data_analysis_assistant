@@ -283,6 +283,19 @@ def render_request_ids():
     return task_ids_select
 
 
+def make_metric_font_smaller():
+    st.markdown(
+        """
+    <style>
+    [data-testid="stMetricValue"] {
+        font-size: 15px;
+    }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_col_info(col_info):
     col_name = col_info["name"]
     source = col_info["source"]

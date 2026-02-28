@@ -12,6 +12,13 @@ if st.session_state.authenticated:
     st.stop()
 
 
+st.markdown("""## Data Analysis Assistant
+
+#### A Deterministic LLM-Driven Automated Data Analytics Platform
+
+[Github](https://github.com/emperor22/data_analysis_assistant)
+""")
+
 login_tab, register_tab = st.tabs(["Login", "Register"])
 
 with login_tab:

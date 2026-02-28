@@ -13,6 +13,7 @@ from utils import (
     get_modified_tasks_by_id,
     render_original_task_expander,
     manage_customized_tasks,
+    make_metric_font_smaller,
 )
 import streamlit as st
 import json
@@ -31,6 +32,8 @@ max_task_count = 30
 
 
 request_id = render_request_ids()
+
+make_metric_font_smaller()
 
 # to do: recreate selected_tasks_to_modify session state in original_tasks page. use this as the main source of truth for customized_tasks.
 # if it disappears after reload, then fetch the tasks from the get_customized_tasks endpoint. additionally, provide a button 'load tasks from db' to override the customized tasks with ones from db (remove the selected_tasks_to_modify state first)

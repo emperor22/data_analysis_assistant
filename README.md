@@ -104,29 +104,29 @@ Execution never evaluates arbitrary code.
 
 ## Architecture
 
-Client
+  Client
 
-  ↓
+    ↓
 
 FastAPI (Auth + Rate Limit + Request Validation)
 
-  ↓
+    ↓
 
 Dataset Normalization & Profiling
 
-  ↓
+    ↓
 
 Celery IO Workers (LLM Planning)
 
-  ↓
+    ↓
 
 Structured Validation & Filtering
 
-  ↓
+    ↓
 
 Celery CPU Workers (Deterministic DSL Execution)
 
-  ↓
+    ↓
   
 Postgres + Artifact Storage + Optional Email Dispatch
 
