@@ -176,7 +176,7 @@ Validation-first testing strategy across layers.
 * Async API endpoints coverage
 * Celery task validation (eager mode)
 * Dependency overrides for isolation
-* Temporary SQLite databae for testing
+* Temporary SQLite database for testing
 
 Run:
 
