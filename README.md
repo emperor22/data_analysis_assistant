@@ -63,20 +63,19 @@ No prompt result advances without validation and persistence.
 
 LLM output is filtered, not blindly trusted.
 
-Invalid steps are removed and logged with request context. Tasks are discarded only if structural integrity falls below minimum thresholds.
+Invalid steps are removed and logged with request context. Workflows must contain a configurable minimum number of valid tasks to proceed. Partially invalid tasks are logged and filtered out; if too few remain, the request fails gracefully.
 
-* Strict schemas (`extra="forbid"`) block hallucinated fields
+* Pydantic models use extra="forbid" to reject unexpected fields, catching LLM hallucinations at the validation boundary.
 * Function → model dispatch restricts steps to a registered analysis function
 * Expression–column token matching prevents undeclared references
 * Required dataset columns enforced before execution eligibility
-* Integrity thresholds prevent degraded workflows from executing
 
-This preserves valid analytical intent while maintaining deterministic guarantees.
+Invalid steps are removed and logged rather than failing the entire workflow. Valid steps proceed to execution, maximizing the utility of partially correct LLM outputs.
 
 
 ## Analysis Functions
 
-All analyses execute through a closed, deterministic domain-specific language. No dynamic code execution is permitted.
+All analyses execute through a validated JSON schema with predefined operation types. No arbitrary code execution is permitted—operations are restricted to a whitelist of data transformations (filter, groupby, map, etc.) with Pydantic-validated parameters.
 
 ## Core Operations
 
