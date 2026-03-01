@@ -33,8 +33,8 @@ def force_refresh_page_once(key):
         st.session_state[state_key] = 0
 
     if st.session_state[state_key] == 0:
+        st.session_state[state_key] = 1
         st.rerun()
-        st.session_state[state_key] == 1
 
 
 def register_user(username, first_name, last_name, email):
