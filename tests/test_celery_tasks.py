@@ -155,7 +155,7 @@ def test_data_processing_task(mocker, data_processing_task_data, run_type):
         TaskProcessingRunType.first_run_after_request.value: TaskStatus.initial_tasks_run_finished.value,
         TaskProcessingRunType.modified_tasks_execution.value: TaskStatus.customized_tasks_run_finished.value,
         TaskProcessingRunType.additional_analyses_request.value: TaskStatus.additional_tasks_run_finished.value,
-        TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.doing_customized_tasks_run.value,
+        TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.customized_tasks_run_with_new_dataset_finished.value,
     }
 
     update_task_result_func_dct = {
