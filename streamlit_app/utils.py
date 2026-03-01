@@ -27,6 +27,16 @@ URL = os.getenv("API_URL", default_url)
 DEFAULT_VERSION_CUSTOMIZED_TASKS = 1
 
 
+def force_refresh_page_once(key):
+    state_key = f"{key}_already_refreshed"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = 0
+
+    if st.session_state[state_key] == 0:
+        st.rerun()
+        st.session_state[state_key] == 1
+
+
 def register_user(username, first_name, last_name, email):
     body = {
         "username": username,

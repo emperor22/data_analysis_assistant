@@ -557,14 +557,14 @@ def data_processing_task(self, data_tasks_dict, run_info, run_type):
         TaskProcessingRunType.first_run_after_request.value: TaskStatus.doing_initial_tasks_run.value,
         TaskProcessingRunType.modified_tasks_execution.value: TaskStatus.doing_customized_tasks_run.value,
         TaskProcessingRunType.additional_analyses_request.value: TaskStatus.doing_additional_tasks_run.value,
-        TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.doing_customized_tasks_run.value,
+        TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.doing_customized_tasks_run_with_new_dataset.value,
     }
 
     finished_status_dct = {
         TaskProcessingRunType.first_run_after_request.value: TaskStatus.initial_tasks_run_finished.value,
         TaskProcessingRunType.modified_tasks_execution.value: TaskStatus.customized_tasks_run_finished.value,
         TaskProcessingRunType.additional_analyses_request.value: TaskStatus.additional_tasks_run_finished.value,
-        TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.doing_customized_tasks_run.value,
+        TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.customized_tasks_run_with_new_dataset_finished.value,
     }
 
     engine = self.get_engine()

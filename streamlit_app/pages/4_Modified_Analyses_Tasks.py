@@ -14,6 +14,7 @@ from utils import (
     render_original_task_expander,
     manage_customized_tasks,
     make_metric_font_smaller,
+    force_refresh_page_once,
 )
 import streamlit as st
 import json
@@ -330,7 +331,10 @@ with task_overview_tab:
 
     if use_new_dataset_check:
         new_dataset_task_req = st.file_uploader(
-            "Select new dataset", accept_multiple_files=False, type=["csv"]
+            "Select new dataset",
+            accept_multiple_files=False,
+            type=["csv"],
+            max_upload_size=50,
         )
         st.write("---")
 
@@ -378,6 +382,7 @@ with task_overview_tab:
             time.sleep(1)
             st.rerun()
 
+force_refresh_page_once("modified_tasks")
 
 with st.sidebar:
     if st.checkbox("Show dataset info"):
