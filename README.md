@@ -17,7 +17,7 @@ Dataset collections you can try: [LINK](https://drive.google.com/drive/folders/1
 
 ## Workflow Lifecycle
 
-<iframe src="https://drive.google.com/file/d/1FZAuOokafPWp-UfCaND1-BkZN1W6pvsq/preview" width="640" height="480"></iframe>
+<video src="https://github.com/user-attachments/assets/8e9bae26-976e-45dc-8a93-83822df95f90" width="800" height="400" controls></video>
 
 1. Upload dataset
 2. LLM generates a structured analytical workflow (JSON schema enforced)
