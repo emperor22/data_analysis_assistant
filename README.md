@@ -17,7 +17,7 @@ Dataset collections you can try: [LINK](https://drive.google.com/drive/folders/1
 
 ## Workflow Lifecycle
 
-<video src="https://www.dropbox.com/scl/fi/9rr2f1dokmz8r5q2gn7nh/DAA_flow.mp4?rlkey=7xjlcv2130ksdft14bfq34sp2&st=a5s5fsuk&dl=1" width="800" height="400" controls></video>
+<iframe src="https://drive.google.com/file/d/1FZAuOokafPWp-UfCaND1-BkZN1W6pvsq/preview" width="640" height="480"></iframe>
 
 1. Upload dataset
 2. LLM generates a structured analytical workflow (JSON schema enforced)
