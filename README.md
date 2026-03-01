@@ -4,9 +4,7 @@
 
 ### A Deterministic LLM-Driven Automated Data Analytics Platform
 
-converts dataset metadata into schema-constrained analytical workflows, **validates them structurally**, and executes them through a closed deterministic DSL.
-
-LLM output is treated as untrusted planning data. Validation and execution are strictly separated to ensure safety, reproducibility, and operational control.
+Uses LLMs to generate analytical workflows from dataset metadata, validates outputs against strict schemas, and executes them through a constrained operation set. LLM output is treated as untrusted planning data—validation and execution are separated to catch hallucinations and ensure safe, reproducible execution.
 
 
 ## Live Demo
@@ -68,7 +66,7 @@ LLM output is filtered, not blindly trusted.
 Invalid steps are removed and logged with request context. Tasks are discarded only if structural integrity falls below minimum thresholds.
 
 * Strict schemas (`extra="forbid"`) block hallucinated fields
-* Function → model dispatch restricts steps to a registered DSL
+* Function → model dispatch restricts steps to a registered analysis function
 * Expression–column token matching prevents undeclared references
 * Required dataset columns enforced before execution eligibility
 * Integrity thresholds prevent degraded workflows from executing
@@ -76,7 +74,7 @@ Invalid steps are removed and logged with request context. Tasks are discarded o
 This preserves valid analytical intent while maintaining deterministic guarantees.
 
 
-## Analytical DSL
+## Analysis Functions
 
 All analyses execute through a closed, deterministic domain-specific language. No dynamic code execution is permitted.
 

@@ -624,11 +624,19 @@ def determine_result_output_type(df: pd.DataFrame):
     is_categorical_2 = "object" in col_2_dtype or "category" in col_2_dtype
 
     if df.shape[0] >= Config.MIN_LINE_POINTS:
-        if (is_datetime_1 and is_numeric_2) or (is_datetime_2 and is_numeric_1):
+        if (
+            (is_datetime_1 and is_numeric_2)
+            or (is_datetime_2 and is_numeric_1)
+            and len(df.columns) == 2
+        ):
             return "LINE_CHART"
 
     if df.shape[0] <= Config.MAX_BAR_ROWS:
-        if (is_categorical_1 and is_numeric_2) or (is_categorical_2 and is_numeric_1):
+        if (
+            (is_categorical_1 and is_numeric_2)
+            or (is_categorical_2 and is_numeric_1)
+            and len(df.columns) == 2
+        ):
             return "BAR_CHART"
 
     return "DISPLAY_TABLE"
