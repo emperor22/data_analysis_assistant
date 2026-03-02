@@ -99,7 +99,7 @@ class ModelAndProviderSchema(BaseModel):
 
 
 class UploadDatasetSchema(ModelAndProviderSchema):
-    run_name: str
+    run_name: str = Field(min_length=1)
     analysis_task_count: int = Field(lt=Config.MAX_TASK_COUNT + 1)
     send_result_to_email: bool
 
@@ -117,21 +117,21 @@ class SetImportedTasksSchema(BaseModel):
 
 
 class GetOTPSchema(BaseModel):
-    username: str
+    username: str = Field(min_length=1)
 
 
 class LoginSchema(BaseModel):
-    username: str
-    otp: str
+    username: str = Field(min_length=1)
+    otp: str = Field(min_length=1)
 
 
 class AdditionalAnalysesRequestSchema(ModelAndProviderSchema):
-    new_tasks_prompt: str
+    new_tasks_prompt: str = Field(min_length=1)
     send_result_to_email: bool
 
 
 class SetupAPIKeySchema(BaseModel):
-    key: str
+    key: str = Field(min_length=1)
     provider: Literal[tuple(literal_eval(Config.LLM_PROVIDER_LIST))]  # type: ignore
 
 
