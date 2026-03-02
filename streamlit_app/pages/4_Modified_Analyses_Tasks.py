@@ -214,7 +214,7 @@ with task_edit_tab:
                             if task["task_id"] == id_
                         )
                         dup_task = deepcopy(dup_task)
-                        dup_task["task_id"] = randint(100, 9999)
+                        dup_task["task_id"] = randint(1000, 9999)
                         dup_task["name"] = f"{dup_task['name']} (copy)"
 
                         st.session_state.modified_tasks[request_id].append(dup_task)

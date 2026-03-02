@@ -143,7 +143,3 @@ with additional_req_tab:
             st.error("your additional analyses request has been processed")
             time.sleep(1)
             st.rerun()
-        else:
-            st.error("you can only run additional analyses request once")
-            time.sleep(1)
-            st.rerun()
