@@ -383,7 +383,7 @@ def get_prompt_result_task(
         return data_tasks.model_dump()
 
 
-retry_for_exceptions_addt_analyses_requset = [
+retry_for_exceptions_addt_analyses_request = [
     RequestException,
     OperationalError,
     RetryableRateLimitException,
@@ -400,7 +400,7 @@ retry_for_exceptions_addt_analyses_requset = [
     rate_limit="15/m",
     retry_backoff=3,
     retry_backoff_max=60,
-    autoretry_for=retry_for_exceptions_addt_analyses_requset,
+    autoretry_for=retry_for_exceptions_addt_analyses_request,
 )
 def get_additional_analyses_prompt_result(
     self,

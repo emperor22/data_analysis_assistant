@@ -30,11 +30,11 @@ Tasks should only use:
 - Columns created in common_column_combination.
 - Columns created in common_column_cleaning_or_transformation.
 - Do not use PII or System/Metadata columns.
-- The first generated task must have a task_id of 11, with subsequent tasks numbered sequentially.
+- The first generated task must have a task_id of 100, with subsequent tasks numbered sequentially.
 
 - Each task must include:
     -name: short descriptive title
-    -task_id: unique integer (starting at 11)
+    -task_id: unique integer (starting at 100)
     -description: clear description of the task goal
     -steps: ordered list of functions with parameters
     -score: (low, medium, high) for estimated relevance to the user's request.

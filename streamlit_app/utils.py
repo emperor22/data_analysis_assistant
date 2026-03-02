@@ -541,10 +541,17 @@ def render_excel_download_button(
 
 
 @include_auth_header
-def make_additional_analyses_request(model, new_tasks_prompt, request_id, headers=None):
+def make_additional_analyses_request(
+    model, new_tasks_prompt, request_id, send_result_to_email, headers=None
+):
     url = f"{URL}/make_additional_analyses_request/{request_id}"
     provider, model = model.split(":")
-    data = {"model": model, "provider": provider, "new_tasks_prompt": new_tasks_prompt}
+    data = {
+        "model": model,
+        "provider": provider,
+        "new_tasks_prompt": new_tasks_prompt,
+        "send_result_to_email": send_result_to_email,
+    }
 
     res = requests.post(url, verify=False, headers=headers, data=json.dumps(data))
 

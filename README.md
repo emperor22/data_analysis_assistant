@@ -4,7 +4,7 @@
 
 ### A Deterministic LLM-Driven Automated Data Analytics Platform
 
-Uses LLMs to generate analytical workflows from dataset metadata, validates outputs against strict schemas, and executes them through a constrained operation set. LLM output is treated as untrusted planning data—validation and execution are separated to catch hallucinations and ensure safe, reproducible execution.
+Uses LLMs to generate analytical workflows from dataset metadata, validates outputs against strict schemas, and executes them through a constrained operation set. LLM output is treated as untrusted planning data. Validation and execution are separated to catch hallucinations and ensure safe, reproducible execution.
 
 
 ## Live Demo
@@ -75,7 +75,7 @@ Invalid steps are removed and logged rather than failing the entire workflow. Va
 
 ## Analysis Functions
 
-All analyses execute through a validated JSON schema with predefined operation types. No arbitrary code execution is permitted—operations are restricted to a whitelist of data transformations (filter, groupby, map, etc.) with Pydantic-validated parameters.
+All analyses execute through a validated JSON schema with predefined operation types. No arbitrary code execution is permitted. Operations are restricted to a whitelist of data transformations (filter, groupby, map, etc.) with Pydantic-validated parameters.
 
 ## Core Operations
 
@@ -124,7 +124,7 @@ Structured Validation & Filtering
 
     ↓
 
-Celery CPU Workers (Deterministic DSL Execution)
+Celery CPU Workers (Execution of Validated Analysis Plan JSONs)
 
     ↓
   

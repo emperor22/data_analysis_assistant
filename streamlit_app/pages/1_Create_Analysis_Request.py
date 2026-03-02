@@ -118,19 +118,32 @@ with additional_req_tab:
               can only contain alphanumeric characters; separate each task by new line/enter",
     )
     model_2 = st.selectbox("Select model", model_list, key="model_2")
+    send_result_to_email_addt_req = st.checkbox("Send result to email", value=False)
 
     new_analysis_text_val = split_and_validate_new_prompt(
         new_analysis_text=new_analysis_text
     )
 
     if st.button("Submit"):
-        if len(new_analysis_text) > 0 and new_analysis_text_val:
-            res = make_additional_analyses_request(
-                model=model_2, new_tasks_prompt=new_analysis_text, request_id=task_id
+        if not (len(new_analysis_text) > 0 and new_analysis_text_val):
+            st.error(
+                "please make sure you follow all the requirements for the prompts formatting"
             )
+            time.sleep(1)
+            st.rerun()
 
-            if not res:
-                st.error("you can only run additional analyses request once.")
+        res = make_additional_analyses_request(
+            model=model_2,
+            new_tasks_prompt=new_analysis_text,
+            request_id=task_id,
+            send_result_to_email=send_result_to_email_addt_req,
+        )
 
+        if res:
+            st.error("your additional analyses request has been processed")
+            time.sleep(1)
+            st.rerun()
         else:
-            st.error("please make sure you follow all the requirements")
+            st.error("you can only run additional analyses request once")
+            time.sleep(1)
+            st.rerun()

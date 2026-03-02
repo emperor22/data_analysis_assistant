@@ -468,6 +468,9 @@ def render_task_step(step, step_idx, pdf: ReportPDF):
 
 def generate_report_and_archive(request_id, result_dct, run_type, run_name):
 
+    CHAR_THRESH_TASK_DESC = 200
+    MAX_CELL_CHARS = 200
+
     base_dir = f"{Config.DATASET_SAVE_PATH}/{request_id}"
 
     task_cat = get_task_category(run_type)
@@ -496,7 +499,6 @@ def generate_report_and_archive(request_id, result_dct, run_type, run_name):
                 logger.debug(f"would not load image for {task}: {e}")
 
         if task in result_dct:
-            CHAR_THRESH_TASK_DESC = 200
             task_desc = result_dct[task]["description"]
 
             if len(task_desc) > CHAR_THRESH_TASK_DESC:
@@ -521,7 +523,7 @@ def generate_report_and_archive(request_id, result_dct, run_type, run_name):
             if not df.empty:
                 pdf.set_font("helvetica", "B", 10)
                 pdf.cell(0, 8, "Data Summary:", new_x="LMARGIN", new_y="NEXT")
-                pdf.set_font("helvetica", "", 9)
+                pdf.set_font("helvetica", "", 8)
 
                 with pdf.table() as table:
                     row = table.row()
@@ -531,7 +533,12 @@ def generate_report_and_archive(request_id, result_dct, run_type, run_name):
                     for _, data_row in df.iterrows():
                         row = table.row()
                         for item in data_row:
-                            row.cell(str(item).encode("utf-8").decode("latin-1"))
+                            cell_text = str(item).encode("utf-8").decode("latin-1")
+
+                            if len(cell_text) > MAX_CELL_CHARS:
+                                cell_text = cell_text[:MAX_CELL_CHARS] + "..."
+
+                            row.cell(cell_text)
                 pdf.ln(10)
             else:
                 pdf.set_font("helvetica", "", 7)
