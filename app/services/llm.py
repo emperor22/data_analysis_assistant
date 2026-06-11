@@ -2,7 +2,7 @@ from app.services.dataset import get_dataset_snippet
 from app.crud import UserTableOperation
 from app.config import Config, api_key_dct
 from app.logger import logger
-from app.exceptions import RateLimitedException
+from app.exceptions import RateLimitedException, ModelNotFoundException
 
 from string import Template
 
@@ -128,6 +128,9 @@ def get_prompt_result_cerebras(prompt, model, key):
     if response.status_code == 429:
         raise RateLimitedException
 
+    if response.status_code == 404:
+        raise ModelNotFoundException
+
     response.raise_for_status()
 
     return response.json()
@@ -148,6 +151,9 @@ def get_prompt_result_google(prompt, model, key):
     if response.status_code == 429:
         raise RateLimitedException
 
+    if response.status_code == 404:
+        raise ModelNotFoundException
+
     response.raise_for_status()
 
     return response.json()
@@ -163,6 +169,9 @@ def get_prompt_result_openrouter(prompt, model, key):
 
     if response.status_code == 429:
         raise RateLimitedException
+
+    if response.status_code == 404:
+        raise ModelNotFoundException
 
     response.raise_for_status()
 

@@ -24,3 +24,7 @@ class RetryableRateLimitException(Exception):
 
 class TerminalRateLimitException(Exception):
     pass
+
+
+class ModelNotFoundException(Exception):
+    pass

@@ -46,6 +46,8 @@ class TaskStatus(Enum):
     # failed attempts
     failed_because_blacklisted_dataset = "TASK FAILED BECAUSE DATASET IS BLACKLISTED"
 
+    failed_because_model_not_found = "TASK FAILED BECAUSE LLM MODEL IS NOT FOUND"
+
     deleted_because_not_accessed_recently = (
         "TASK DELETED BECAUSE IT IS NOT ACCESSED FOR SOME TIME"
     )

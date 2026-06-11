@@ -17,6 +17,7 @@ from app.exceptions import (
     RateLimitedException,
     RetryableRateLimitException,
     TerminalRateLimitException,
+    ModelNotFoundException,
 )
 
 from app.crud import (
@@ -153,6 +154,15 @@ def handle_rate_limit_exception_prompt_task(
     raise TerminalRateLimitException
 
 
+def handle_model_not_found_exception(
+    request_id, prompt_table_ops: PromptTableOperation
+):
+    prompt_table_ops.change_request_status_sync(
+        request_id=request_id, status=TaskStatus.failed_because_model_not_found.value
+    )
+    raise ModelNotFoundException
+
+
 #####################
 
 
@@ -256,6 +266,11 @@ def get_prompt_result_task(
                     user_id=user_id,
                     request_id=request_id,
                     prompt_table_ops=prompt_table_ops,
+                )
+
+            except ModelNotFoundException:
+                handle_model_not_found_exception(
+                    request_id=request_id, prompt_table_ops=prompt_table_ops
                 )
 
         if debug_prompt_and_res:
@@ -462,6 +477,10 @@ def get_additional_analyses_prompt_result(
                     user_id=user_id,
                     request_id=request_id,
                     prompt_table_ops=prompt_table_ops,
+                )
+            except ModelNotFoundException:
+                handle_model_not_found_exception(
+                    request_id=request_id, prompt_table_ops=prompt_table_ops
                 )
 
         if debug_prompt_and_res:
