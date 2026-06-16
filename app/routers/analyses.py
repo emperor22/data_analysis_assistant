@@ -27,7 +27,7 @@ from app.schemas.routes import (
 from app.schemas.enums import TaskProcessingRunType
 
 from app.services.infra import check_if_task_is_valid
-from app.services.routers_services.analyses_service import (
+from app.routers.services.analyses import (
     parse_form_json,
     build_data_tasks_context,
     create_initial_analysis_run,

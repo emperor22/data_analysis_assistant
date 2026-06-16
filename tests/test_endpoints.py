@@ -110,7 +110,7 @@ async def test_execute_analyses_w_new_dataset_endpoint(
     # mock_dataset_columns_match.return_value = True
 
     mock_get_col_transform_and_combination = mocker.patch(
-        "app.services.analyses_service.get_col_transform_and_combination"
+        "app.routers.services.analyses.get_col_transform_and_combination"
     )  # no data in task_run table yet
     mock_get_col_transform_and_combination.return_value = (
         column_transform_and_combination_data

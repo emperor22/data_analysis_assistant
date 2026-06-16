@@ -18,7 +18,7 @@ from app.crud.dependencies import (
     get_user_customized_tasks_table_ops,
 )
 
-from app.services.routers_services import analyses_service
+from app.routers.services import analyses
 
 from app.core.auth import get_current_user
 from app.services.data_transform_utils import get_dataset_id
@@ -225,7 +225,7 @@ def df_to_parquet_mock(mocker):
 
 @pytest.fixture(scope="function")
 def patch_uuid(mocker):
-    mock_func = mocker.patch("app.crud.uuid.uuid4")
+    mock_func = mocker.patch("app.crud.queries.uuid.uuid4")
     mock_func.return_value = TEST_UUID
 
 
@@ -396,11 +396,11 @@ def celery_mock_task(mock_celery_app):
 def patch_celery_related_things(monkeypatch, mock_celery_app, celery_mock_task):
     monkeypatch.setattr(celery_app, "app", mock_celery_app)
 
-    monkeypatch.setattr(analyses_service, "get_prompt_result_task", celery_mock_task)
+    monkeypatch.setattr(analyses, "get_prompt_result_task", celery_mock_task)
     monkeypatch.setattr(
-        analyses_service, "get_additional_analyses_prompt_result_task", celery_mock_task
+        analyses, "get_additional_analyses_prompt_result_task", celery_mock_task
     )
-    monkeypatch.setattr(analyses_service, "data_processing_task", celery_mock_task)
+    monkeypatch.setattr(analyses, "data_processing_task", celery_mock_task)
     monkeypatch.setattr(email_tasks, "send_email_task", celery_mock_task)
 
 
