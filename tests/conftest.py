@@ -15,8 +15,10 @@ from app.crud import (
 
 from app.auth import get_current_user
 from app.data_transform_utils import get_dataset_id
-from app.api import app
-from app import tasks, api
+from app.tasks import (celery_app, prompt_tasks, email_tasks, processing_tasks)
+
+from app.main import app
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine
 import os
@@ -382,15 +384,15 @@ def celery_mock_task(mock_celery_app):
 
     return mock_task
 
-
+from app.services import analyses_service
 @pytest.fixture(scope="function")
 def patch_celery_related_things(monkeypatch, mock_celery_app, celery_mock_task):
-    monkeypatch.setattr(tasks, "app", mock_celery_app)
+    monkeypatch.setattr(celery_app, "app", mock_celery_app)
 
-    monkeypatch.setattr(api, "get_prompt_result_task", celery_mock_task)
-    monkeypatch.setattr(api, "get_additional_analyses_prompt_result", celery_mock_task)
-    monkeypatch.setattr(api, "data_processing_task", celery_mock_task)
-    monkeypatch.setattr(api, "send_email_task", celery_mock_task)
+    monkeypatch.setattr(analyses_service, "get_prompt_result_task", celery_mock_task)
+    monkeypatch.setattr(analyses_service, "get_additional_analyses_prompt_result_task", celery_mock_task)
+    monkeypatch.setattr(analyses_service, "data_processing_task", celery_mock_task)
+    monkeypatch.setattr(email_tasks, "send_email_task", celery_mock_task)
 
 
 @pytest.fixture(scope="function")
@@ -414,8 +416,8 @@ async def test_client(
     patch_is_task_invalid_check,
     mocker,
 ):
-    mocker.patch("app.api.update_last_accessed_at_when_called")
-    mocker.patch("app.api.save_dataset_req_id")
+    mocker.patch("app.services.infra.update_last_accessed_at_when_called")
+    mocker.patch("app.services.dataset.save_dataset_req_id")
 
     async def override_get_prompt_table_ops():
         return PromptTableOperation(async_conn)

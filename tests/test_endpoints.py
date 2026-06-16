@@ -20,10 +20,10 @@ async def test_get_otp_endpoint(test_client, mocker, get_otp_data):
 
     endpoint = "/get_otp"
 
-    mock_generate_random_otp = mocker.patch("app.api.generate_random_otp")
+    mock_generate_random_otp = mocker.patch("app.routers.auth.generate_random_otp")
     mock_generate_random_otp.return_value = (otp, encrypted_otp)  # raw, encrypted
 
-    mock_send_email = mocker.patch("app.api.send_email_task")
+    mock_send_email = mocker.patch("app.routers.auth.send_email_task")
 
     data = {"username": username}
     res = await test_client.post(endpoint, json=data)
@@ -39,7 +39,7 @@ async def test_login_endpoint(test_client, mocker, login_data):
     new_otp_for_invalidation = login_data["new_otp_for_invalidation"]
     new_otp_encrypted = login_data["new_otp_encrypted"]
 
-    mock_generate_random_otp = mocker.patch("app.api.generate_random_otp")
+    mock_generate_random_otp = mocker.patch("app.routers.auth.generate_random_otp")
     mock_generate_random_otp.return_value = new_otp_for_invalidation, new_otp_encrypted
 
     endpoint = "/login"
@@ -67,7 +67,7 @@ async def test_initial_request_endpoint(
     run_name = initial_request_data["run_name"]
     send_result_to_email = initial_request_data["send_result_to_email"]
 
-    endpoint = "/upload_dataset"
+    endpoint = "/initial_analysis"
     file = {"file": (filename, file_content)}
 
     data = {
@@ -110,7 +110,7 @@ async def test_execute_analyses_w_new_dataset_endpoint(
     # mock_dataset_columns_match.return_value = True
 
     mock_get_col_transform_and_combination = mocker.patch(
-        "app.api.get_col_transform_and_combination"
+        "app.services.analyses_service.get_col_transform_and_combination"
     )  # no data in task_run table yet
     mock_get_col_transform_and_combination.return_value = (
         column_transform_and_combination_data
@@ -214,7 +214,7 @@ async def test_setup_api_key(test_client, mocker, setup_api_key_data):
     key = setup_api_key_data["key"]
     provider = setup_api_key_data["provider"]
 
-    mock_check_valid = mocker.patch("app.api.check_if_api_key_valid")
+    mock_check_valid = mocker.patch("app.routers.tasks.check_if_api_key_valid")
 
     mock_check_valid.return_value = "VALID_KEY"
 

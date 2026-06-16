@@ -331,7 +331,7 @@ def write_prompt_and_res(prompt, res, part, request_id, dir_):
 
 
 def cleanup_agg_col_names(resp_pt_2, resp_pt_1):
-
+    """Handles cases where a step's column contains _{agg} suffix when its preceded by a groupby step"""
     json_str = json.dumps(resp_pt_2)
 
     def remove_suffix(s):

@@ -489,7 +489,7 @@ def send_tasks_to_process_w_new_dataset(
 def make_analysis_request(
     name, uploaded_file, model, task_count, send_result_to_email, headers=None
 ):
-    url = f"{URL}/upload_dataset"
+    url = f"{URL}/initial_analysis"
     file = {"file": (uploaded_file.name, uploaded_file.getvalue())}
 
     provider, model = model.split(":")

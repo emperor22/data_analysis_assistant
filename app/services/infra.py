@@ -25,6 +25,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import sentry_sdk
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
+
 
 async def is_task_invalid_or_still_processing(request_id, user_id, prompt_table_ops):
     req_status = await prompt_table_ops.get_request_status(
@@ -134,7 +139,7 @@ class LogRequestMiddleware(BaseHTTPMiddleware):
                 f"SERVER ERROR 5XX | {request.method} {request.url} | Headers: {dict(request.headers)} | Completed with status {response.status_code} in {process_time_ms} ms"
             )
 
-        slow_routes_exclude = ["/upload_dataset"]
+        slow_routes_exclude = ["/initial_analysis"]
         if (
             process_time_ms > Config.THRES_SLOW_RESPONSE_TIME_MS
             and Config.WARN_FOR_SLOW_RESPONSE_TIME

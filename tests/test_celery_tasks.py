@@ -2,7 +2,7 @@ import pytest
 import json
 from app.tasks import (
     get_prompt_result_task,
-    get_additional_analyses_prompt_result,
+    get_additional_analyses_prompt_result_task, 
     data_processing_task,
     TaskStatus,
     TaskProcessingRunType,
@@ -22,9 +22,9 @@ def test_get_prompt_result_task(mocker, get_prompt_result_data):
     prompt_pt_1 = ""
 
     mock_change_request_status_sync = mocker.patch(
-        "app.tasks.PromptTableOperation.change_request_status_sync"
+        "app.tasks.prompt_tasks.PromptTableOperation.change_request_status_sync"
     )
-    mocker.patch("app.tasks.PromptTableOperation.insert_prompt_result_sync")
+    mocker.patch("app.tasks.prompt_tasks.PromptTableOperation.insert_prompt_result_sync")
 
     res = get_prompt_result_task(
         model=model,
@@ -67,11 +67,12 @@ def test_get_additional_analyses_prompt_result_task(
     user_id = get_additional_analyses_prompt_result_data["user_id"]
 
     mock_change_request_status_sync = mocker.patch(
-        "app.tasks.PromptTableOperation.change_request_status_sync"
+        "app.tasks.prompt_tasks.PromptTableOperation.change_request_status_sync"
     )
-    mocker.patch("app.tasks.PromptTableOperation.get_prompt_result_sync")
+    
+    mocker.patch("app.tasks.prompt_tasks.PromptTableOperation.get_prompt_result_sync")
 
-    res = get_additional_analyses_prompt_result(
+    res = get_additional_analyses_prompt_result_task(
         model=model,
         provider=provider,
         api_key=api_key,
@@ -130,11 +131,11 @@ def test_data_processing_task(mocker, data_processing_task_data, run_type):
     ]
 
     mock_change_request_status_sync = mocker.patch(
-        "app.tasks.PromptTableOperation.change_request_status_sync"
+        "app.tasks.processing_tasks.PromptTableOperation.change_request_status_sync"
     )
 
     mock_task_run_table_ops = mocker.patch(
-        "app.tasks.TaskRunTableOperation"
+        "app.tasks.processing_tasks.TaskRunTableOperation"
     ).return_value  # patch the returned instance
     mock_task_run_table_ops.request_id_exists.return_value = False
     mock_task_run_table_ops.get_task_by_id_sync.return_value = (
