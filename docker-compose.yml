@@ -36,7 +36,7 @@ services:
     build:
       context: .
       dockerfile: ./app/Dockerfile
-    command: uvicorn app.api:app --host 0.0.0.0 --port 8000 --log-level critical
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level critical
     expose:
       - 8000
     volumes:
@@ -83,7 +83,7 @@ services:
     build:
       context: .
       dockerfile: ./app/Dockerfile
-    command: celery -A app.tasks beat --loglevel=info --schedule=/usr/src/app/beat_schedule/celerybeat-schedule
+    command: celery -A app.tasks.celery_app beat --loglevel=info --schedule=/usr/src/app/beat_schedule/celerybeat-schedule
     volumes:
       - ./app_data/beat:/usr/src/app/beat_schedule
       - ./app_data/result/datasets:/usr/src/app/app_data/result/datasets
@@ -101,7 +101,7 @@ services:
     build:
       context: .
       dockerfile: ./app/Dockerfile
-    command: celery -A app.tasks worker --loglevel=info -P solo -Q cpu_tasks_queue
+    command: celery -A app.tasks.celery_app worker --loglevel=info -P solo -Q cpu_tasks_queue
     volumes:
       - ./app_data/result/datasets:/usr/src/app/app_data/result/datasets
       - ./app_data/resp_jsons:/usr/src/app/app_data/resp_jsons
@@ -118,7 +118,7 @@ services:
     build:
       context: .
       dockerfile: ./app/Dockerfile
-    command: celery -A app.tasks worker --loglevel=info -P gevent --concurrency 10 -Q io_tasks_queue
+    command: celery -A app.tasks.celery_app worker --loglevel=info -P gevent --concurrency 10 -Q io_tasks_queue
     volumes:
       - ./app_data/result/datasets:/usr/src/app/app_data/result/datasets
       - ./app_data/resp_jsons:/usr/src/app/app_data/resp_jsons
