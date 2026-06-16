@@ -11,8 +11,17 @@ import sentry_sdk
 from sentry_sdk.integrations.celery import CeleryIntegration
 
 
-app = Celery("tasks", backend=Config.REDIS_URL, broker=Config.REDIS_URL, include=['app.tasks.prompt_tasks', 'app.tasks.processing_tasks', 'app.tasks.maintenance_tasks', 
-                                                                                  'app.tasks.email_tasks'])
+app = Celery(
+    "tasks",
+    backend=Config.REDIS_URL,
+    broker=Config.REDIS_URL,
+    include=[
+        "app.tasks.prompt_tasks",
+        "app.tasks.processing_tasks",
+        "app.tasks.maintenance_tasks",
+        "app.tasks.email_tasks",
+    ],
+)
 app.conf.task_routes = {
     "get_prompt_result_task": {"queue": "io_tasks_queue"},
     "get_additional_analyses_prompt_result_task": {"queue": "io_tasks_queue"},

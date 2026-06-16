@@ -1,4 +1,3 @@
-
 import time
 
 
@@ -24,15 +23,15 @@ from app.schemas import (
     DatasetAnalysisModelPartOne,
     DatasetAnalysisModelPartTwo,
     TaskProcessingRunType,
-    TaskStatus
+    TaskStatus,
 )
 
 
 from app.tasks.exception_handlers import (
-    handle_model_not_found_exception, 
-    handle_rate_limit_exception_prompt_task, 
-    handle_validation_error_prompt_task
-    )
+    handle_model_not_found_exception,
+    handle_rate_limit_exception_prompt_task,
+    handle_validation_error_prompt_task,
+)
 
 from app.logger import logger
 from app.config import Config
@@ -49,14 +48,26 @@ import json
 def get_elapsed_time_ms(start_time):
     return round((time.perf_counter() - start_time) * 1000, 2)
 
-def check_if_dataset_is_not_blacklisted(blacklist_table_ops: BlacklistedDatasetsTableOperation, 
-                                        dataset_id):
+
+def check_if_dataset_is_not_blacklisted(
+    blacklist_table_ops: BlacklistedDatasetsTableOperation, dataset_id
+):
     dataset_blacklisted = blacklist_table_ops.check_if_blacklisted(dataset_id)
     if dataset_blacklisted is not None and dataset_blacklisted:
         raise BlacklistedDatasetException
-    
-def get_llm_response(prompt, model, provider, api_key, user_id, request_id, prompt_table_ops: PromptTableOperation, 
-                        mock_file=None, mock_part=None):
+
+
+def get_llm_response(
+    prompt,
+    model,
+    provider,
+    api_key,
+    user_id,
+    request_id,
+    prompt_table_ops: PromptTableOperation,
+    mock_file=None,
+    mock_part=None,
+):
     if mock_file:
         return mock_resp_loader(mock_file, pt=mock_part)
 
@@ -75,8 +86,15 @@ def get_llm_response(prompt, model, provider, api_key, user_id, request_id, prom
             request_id=request_id,
             prompt_table_ops=prompt_table_ops,
         )
-        
-def write_debug_prompt_and_response_if_requested(enabled, prompt, response, part, request_id,):
+
+
+def write_debug_prompt_and_response_if_requested(
+    enabled,
+    prompt,
+    response,
+    part,
+    request_id,
+):
     if not enabled:
         return
 
@@ -87,10 +105,17 @@ def write_debug_prompt_and_response_if_requested(enabled, prompt, response, part
         request_id=request_id,
         dir_=Config.DEBUG_PROMPT_AND_RES_SAVE_DIR,
     )
-    
-def validate_initial_prompt_resp_part_one( response, dataset_cols, request_id, user_id, dataset_id, 
-                                        blacklist_table_ops: BlacklistedDatasetsTableOperation, 
-                                        prompt_table_ops: PromptTableOperation):
+
+
+def validate_initial_prompt_resp_part_one(
+    response,
+    dataset_cols,
+    request_id,
+    user_id,
+    dataset_id,
+    blacklist_table_ops: BlacklistedDatasetsTableOperation,
+    prompt_table_ops: PromptTableOperation,
+):
     try:
         validated = DatasetAnalysisModelPartOne.model_validate(
             response,
@@ -112,7 +137,8 @@ def validate_initial_prompt_resp_part_one( response, dataset_cols, request_id, u
             blacklist_table_ops=blacklist_table_ops,
             prompt_table_ops=prompt_table_ops,
         )
-        
+
+
 def build_part_two_prompt(part_one_result, task_count):
     return insert_prompt_context(
         prompt_file=Config.PT2_PROMPT_TEMPLATE,
@@ -122,10 +148,16 @@ def build_part_two_prompt(part_one_result, task_count):
             "current_time": datetime.now().strftime("%H:%M:%S"),
         },
     )
-    
-def validate_initial_prompt_resp_part_two(response, request_id, user_id, dataset_id,
-                                    blacklist_table_ops: BlacklistedDatasetsTableOperation,
-                                    prompt_table_ops: PromptTableOperation):
+
+
+def validate_initial_prompt_resp_part_two(
+    response,
+    request_id,
+    user_id,
+    dataset_id,
+    blacklist_table_ops: BlacklistedDatasetsTableOperation,
+    prompt_table_ops: PromptTableOperation,
+):
     try:
         validated = DatasetAnalysisModelPartTwo.model_validate(
             response,
@@ -146,14 +178,12 @@ def validate_initial_prompt_resp_part_two(response, request_id, user_id, dataset
             blacklist_table_ops=blacklist_table_ops,
             prompt_table_ops=prompt_table_ops,
         )
-        
+
 
 def build_initial_data_tasks(prompt_result, dataset_cols, request_id):
     data_tasks_fields = DataTasks.model_fields.keys()
     data_tasks_dct = {
-        key: value
-        for key, value in prompt_result.items()
-        if key in data_tasks_fields
+        key: value for key, value in prompt_result.items() if key in data_tasks_fields
     }
 
     return DataTasks.model_validate(
@@ -165,15 +195,26 @@ def build_initial_data_tasks(prompt_result, dataset_cols, request_id):
             "request_id": request_id,
         },
     )
-    
-ADDITIONAL_ANALYSIS_CONTEXT_FIELDS = ["columns", "common_column_cleaning_or_transformation", "common_column_combination"]
 
-def build_additional_analysis_prompt(new_tasks_prompt, request_id, user_id, mock_file,
-                                        prompt_table_ops: PromptTableOperation):
+
+ADDITIONAL_ANALYSIS_CONTEXT_FIELDS = [
+    "columns",
+    "common_column_cleaning_or_transformation",
+    "common_column_combination",
+]
+
+
+def build_additional_analysis_prompt(
+    new_tasks_prompt,
+    request_id,
+    user_id,
+    mock_file,
+    prompt_table_ops: PromptTableOperation,
+):
     # no need to build prompt when mock response is provided
     if mock_file:
         return None
-    
+
     initial_prompt_result = prompt_table_ops.get_prompt_result_sync(
         request_id=request_id,
         user_id=user_id,
@@ -182,7 +223,8 @@ def build_additional_analysis_prompt(new_tasks_prompt, request_id, user_id, mock
     initial_prompt_result = json.loads(initial_prompt_result["prompt_result"])
 
     context_json = {
-        field: initial_prompt_result[field] for field in ADDITIONAL_ANALYSIS_CONTEXT_FIELDS
+        field: initial_prompt_result[field]
+        for field in ADDITIONAL_ANALYSIS_CONTEXT_FIELDS
     }
 
     return insert_prompt_context(
@@ -193,8 +235,11 @@ def build_additional_analysis_prompt(new_tasks_prompt, request_id, user_id, mock
             "current_time": datetime.now().strftime("%H:%M:%S"),
         },
     )
-    
-def validate_additional_analyses_prompt_res(resp, user_id, request_id, prompt_table_ops: PromptTableOperation):
+
+
+def validate_additional_analyses_prompt_res(
+    resp, user_id, request_id, prompt_table_ops: PromptTableOperation
+):
     try:
         resp = DatasetAnalysisModelPartTwo.model_validate(
             resp,
@@ -215,6 +260,7 @@ def validate_additional_analyses_prompt_res(resp, user_id, request_id, prompt_ta
 
     return resp.model_dump()
 
+
 def build_additional_analyses_data_task(resp, request_id):
     data_tasks_dct = {"common_tasks": resp["common_tasks"]}
     return DataTasks.model_validate(
@@ -226,9 +272,9 @@ def build_additional_analyses_data_task(resp, request_id):
         },
     )
 
+
 def log_slow_prompt_tasks(process_time_ms, request_id, user_id, task):
     if process_time_ms > Config.THRES_SLOW_INITIAL_REQUEST_PROCESS_TIME_MS:
         logger.warning(
             f"slow {task} request processing time ({process_time_ms} ms): request_id {request_id}, user_id {user_id}"
         )
-

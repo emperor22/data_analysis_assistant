@@ -1,14 +1,6 @@
-from fastapi import (
-    Depends,
-    APIRouter,
-    HTTPException,
-    Request
-)
+from fastapi import Depends, APIRouter, HTTPException, Request
 
-from app.services.infra import (
-    get_background_tasks,
-    limiter
-)
+from app.services.infra import get_background_tasks, limiter
 
 
 from app.tasks import (
@@ -16,7 +8,6 @@ from app.tasks import (
 )
 from app.crud import (
     UserTableOperation,
-
     get_user_table_ops,
 )
 from app.auth import (
@@ -43,6 +34,7 @@ from datetime import datetime, timezone, timedelta
 
 
 router = APIRouter()
+
 
 @router.post("/get_otp")
 async def get_otp(
@@ -93,12 +85,13 @@ async def login(
     user_table_ops: UserTableOperation = Depends(get_user_table_ops),
 ):
     user = await user_table_ops.get_user(login_data.username)
-    
+
     if not user:
-        logger.warning(f"user {username} does not exist in db and tried to log in")
+        logger.warning(
+            f"user {login_data.username} does not exist in db and tried to log in"
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
-    
     user_otp = user["otp"]
     username = user["username"]
     otp_expire = user["otp_expire"]
@@ -163,5 +156,3 @@ async def register_user(
             status_code=409,
             detail=f"username {username} or email {email} already exists.",
         )
-
-

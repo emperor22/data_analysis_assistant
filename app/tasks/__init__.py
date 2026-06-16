@@ -5,7 +5,7 @@ from app.tasks.prompt_tasks_helpers import TaskStatus, TaskProcessingRunType
 from app.tasks.email_tasks import send_email_task
 
 __all__ = [
-    "TaskStatus", 
+    "TaskStatus",
     "TaskProcessingRunType",
     "get_prompt_result_task",
     "get_additional_analyses_prompt_result_task",

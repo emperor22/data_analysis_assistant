@@ -18,9 +18,8 @@ import shutil
 import os
 
 
-
 # runs every day at end of day
-@shared_task(name='update_last_accessed_at_task')
+@shared_task(name="update_last_accessed_at_task")
 def update_last_accessed_at_db():
     try:
         conn_pool = redis.ConnectionPool.from_url(Config.REDIS_URL)
@@ -46,7 +45,7 @@ def update_last_accessed_at_db():
 
 
 # runs at first of each month
-@shared_task(name='cleanup_unused_datasets_task')
+@shared_task(name="cleanup_unused_datasets_task")
 def cleanup_unused_datasets():
 
     with base_engine_sync.begin() as conn:

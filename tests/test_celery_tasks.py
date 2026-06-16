@@ -2,7 +2,7 @@ import pytest
 import json
 from app.tasks import (
     get_prompt_result_task,
-    get_additional_analyses_prompt_result_task, 
+    get_additional_analyses_prompt_result_task,
     data_processing_task,
     TaskStatus,
     TaskProcessingRunType,
@@ -24,7 +24,9 @@ def test_get_prompt_result_task(mocker, get_prompt_result_data):
     mock_change_request_status_sync = mocker.patch(
         "app.tasks.prompt_tasks.PromptTableOperation.change_request_status_sync"
     )
-    mocker.patch("app.tasks.prompt_tasks.PromptTableOperation.insert_prompt_result_sync")
+    mocker.patch(
+        "app.tasks.prompt_tasks.PromptTableOperation.insert_prompt_result_sync"
+    )
 
     res = get_prompt_result_task(
         model=model,
@@ -69,7 +71,7 @@ def test_get_additional_analyses_prompt_result_task(
     mock_change_request_status_sync = mocker.patch(
         "app.tasks.prompt_tasks.PromptTableOperation.change_request_status_sync"
     )
-    
+
     mocker.patch("app.tasks.prompt_tasks.PromptTableOperation.get_prompt_result_sync")
 
     res = get_additional_analyses_prompt_result_task(

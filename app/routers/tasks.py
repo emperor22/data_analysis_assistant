@@ -1,9 +1,4 @@
-from fastapi import (
-    HTTPException,
-    Depends,
-    Request,
-    APIRouter
-)
+from fastapi import HTTPException, Depends, Request, APIRouter
 
 from fastapi.responses import FileResponse
 
@@ -11,7 +6,7 @@ from app.services.infra import (
     get_task_plot_results,
     update_last_accessed_at_when_called,
     check_if_task_is_valid,
-    limiter
+    limiter,
 )
 
 from app.services.llm import check_if_api_key_valid
@@ -23,20 +18,15 @@ from app.crud import (
     get_task_run_table_ops,
     get_user_customized_tasks_table_ops,
     UserCustomizedTasksTableOperation,
-    get_redis_client, 
-    UserTableOperation, 
-    get_user_table_ops
+    get_redis_client,
+    UserTableOperation,
+    get_user_table_ops,
 )
-from app.auth import (
-    get_current_user,
-    get_admin,
-    encrypt_api_key
-
-)
+from app.auth import get_current_user, get_admin, encrypt_api_key
 from app.schemas import (
     UserCustomizedTasksSchema,
     TaskProcessingRunType,
-    SetupAPIKeySchema
+    SetupAPIKeySchema,
 )
 
 from app.logger import logger
@@ -49,6 +39,7 @@ import os
 
 
 router = APIRouter()
+
 
 @router.get("/get_original_tasks_by_id/{request_id}")
 @limiter.limit(Config.RATE_LIMIT_GET_ENDPOINTS)
@@ -260,6 +251,7 @@ async def download_excel_result(
 
     return FileResponse(file_path, media_type="application/octet-stream", filename=name)
 
+
 @router.post("/setup_api_key")
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
 async def setup_api_key(
@@ -296,4 +288,3 @@ async def setup_api_key(
     logger.info(f"user added api key: user_id {user_id}")
 
     return {"detail": "api key setup successful"}
-

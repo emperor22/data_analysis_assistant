@@ -1,11 +1,4 @@
-from fastapi import (
-    UploadFile,
-    HTTPException,
-    Depends,
-    Form,
-    Request,
-    APIRouter
-)
+from fastapi import UploadFile, HTTPException, Depends, Form, Request, APIRouter
 
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
@@ -34,6 +27,7 @@ from app.config import Config
 from pydantic import ValidationError
 
 router = APIRouter()
+
 
 @router.post("/join_dataset")
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
@@ -105,4 +99,3 @@ async def join_dataset(
     headers = {"Content-Disposition": 'attachment; filename="result_dataset.csv.gz"'}
 
     return Response(content=content, headers=headers, media_type="application/gzip")
-

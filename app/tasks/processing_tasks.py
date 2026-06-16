@@ -4,7 +4,6 @@ import time
 from app.services.analysis import DataAnalysisProcessor
 
 
-
 from app.crud import (
     TaskRunTableOperation,
     PromptTableOperation,
@@ -46,6 +45,7 @@ FINISHED_STATUS_RUNTYPE_MAPPING = {
     TaskProcessingRunType.modified_tasks_execution_with_new_dataset.value: TaskStatus.customized_tasks_run_with_new_dataset_finished.value,
 }
 
+
 @shared_task(
     bind=True,
     base=DatabaseTask,
@@ -86,7 +86,7 @@ def data_processing_task(self, data_tasks_dict, run_info, run_type):
                 "is_from_data_tasks": True,
             },
         )
-        
+
         if (
             run_type == TaskProcessingRunType.first_run_after_request.value
             and not task_run_table_ops.request_id_exists(request_id)

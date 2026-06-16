@@ -13,9 +13,11 @@ from app.crud import (
     get_user_customized_tasks_table_ops,
 )
 
+from app.services import analyses_service
+
 from app.auth import get_current_user
 from app.data_transform_utils import get_dataset_id
-from app.tasks import (celery_app, prompt_tasks, email_tasks, processing_tasks)
+from app.tasks import celery_app, email_tasks
 
 from app.main import app
 
@@ -384,13 +386,15 @@ def celery_mock_task(mock_celery_app):
 
     return mock_task
 
-from app.services import analyses_service
+
 @pytest.fixture(scope="function")
 def patch_celery_related_things(monkeypatch, mock_celery_app, celery_mock_task):
     monkeypatch.setattr(celery_app, "app", mock_celery_app)
 
     monkeypatch.setattr(analyses_service, "get_prompt_result_task", celery_mock_task)
-    monkeypatch.setattr(analyses_service, "get_additional_analyses_prompt_result_task", celery_mock_task)
+    monkeypatch.setattr(
+        analyses_service, "get_additional_analyses_prompt_result_task", celery_mock_task
+    )
     monkeypatch.setattr(analyses_service, "data_processing_task", celery_mock_task)
     monkeypatch.setattr(email_tasks, "send_email_task", celery_mock_task)
 

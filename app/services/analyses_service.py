@@ -2,7 +2,6 @@
 
 from ast import literal_eval
 from dataclasses import asdict
-from typing import Any
 
 from fastapi import HTTPException, UploadFile
 from pydantic import ValidationError
@@ -47,8 +46,8 @@ from app.services.utils import (
 from app.tasks import (
     get_prompt_result_task,
     get_additional_analyses_prompt_result_task,
-    data_processing_task, 
-    send_email_task
+    data_processing_task,
+    send_email_task,
 )
 
 from app.crud import (
@@ -430,7 +429,7 @@ async def execute_analysis_run_with_new_dataset(
 
     logger.info(
         f"modified task execution with new dataset added: request_id {request_id}, user_id {user_id}",
-        )
+    )
 
 
 async def create_additional_analysis_run(

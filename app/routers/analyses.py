@@ -19,7 +19,7 @@ from app.schemas import (
     UploadDatasetSchema,
     ExecuteAnalysesSchema,
     AdditionalAnalysesRequestSchema,
-    TaskProcessingRunType
+    TaskProcessingRunType,
 )
 
 from app.services.infra import check_if_task_is_valid
@@ -33,6 +33,7 @@ from app.services.analyses_service import (
 )
 
 router = APIRouter()
+
 
 @router.post("/initial_analysis")
 @limiter.limit(Config.RATE_LIMIT_TASK_ENDPOINTS)
