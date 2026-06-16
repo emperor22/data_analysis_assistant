@@ -9,6 +9,7 @@ from app.schemas.enums import TaskStatus
 
 import json
 
+
 class BlacklistedDatasetsTableOperation:
     def __init__(self, conn_sync):
         self.conn_sync = conn_sync

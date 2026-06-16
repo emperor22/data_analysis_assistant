@@ -8,9 +8,9 @@ from pydantic import (
 )
 from typing import List, Union, Dict, Any, Literal
 import re
-from enum import Enum
 from app.core.logger import logger
 from app.core.config import Config
+
 
 class CommonColumnCombinationOperation(BaseModel):
     source_columns: List[str] = Field(min_length=1)  # type: ignore

@@ -90,7 +90,7 @@ class SetupAPIKeySchema(BaseModel):
 class JoinDatasetSchema(BaseModel):
     join_method: Literal["inner", "outer", "left", "right"]
     join_keys: list[tuple]
-    
+
+
 class ExecuteAnalysesSchema(DataTasks):
     send_result_to_email: bool
-

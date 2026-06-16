@@ -1,18 +1,22 @@
 from fastapi import Depends
 
 
-
 import redis
 
 from app.core.config import Config
 
 from app.crud.models import Base, base_engine_sync, SessionLocal
-from app.crud.queries import PromptTableOperation, TaskRunTableOperation, UserTableOperation, UserCustomizedTasksTableOperation
+from app.crud.queries import (
+    PromptTableOperation,
+    TaskRunTableOperation,
+    UserTableOperation,
+    UserCustomizedTasksTableOperation,
+)
 
 
 def create_tables():
     Base.metadata.create_all(base_engine_sync)
-    
+
 
 async def get_session():
     async with SessionLocal() as session:

@@ -8,7 +8,6 @@ from sqlalchemy.orm import declarative_base
 from app.core.config import Config
 
 
-
 base_engine = create_async_engine(
     Config.DATABASE_URL_ASYNC,
     pool_size=10,
@@ -108,4 +107,3 @@ class UserCustomizedTasks(Base):
     saved_tasks_slot_3 = Column(Text)
 
     imported_original_tasks = Column(Text)
-
