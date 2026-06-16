@@ -1,6 +1,6 @@
 import sys
 from loguru import logger
-from app.config import Config
+from app.core.config import Config
 
 
 def setup_logger():

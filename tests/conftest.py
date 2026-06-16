@@ -1,11 +1,16 @@
 import pytest
 import pytest_asyncio
-from app.crud import (
-    Base,
+
+from app.crud.models import Base
+
+from app.crud.queries import (
     UserTableOperation,
     PromptTableOperation,
     TaskRunTableOperation,
     UserCustomizedTasksTableOperation,
+)
+
+from app.crud.dependencies import (
     get_prompt_table_ops,
     get_user_table_ops,
     get_task_run_table_ops,
@@ -13,10 +18,10 @@ from app.crud import (
     get_user_customized_tasks_table_ops,
 )
 
-from app.services import analyses_service
+from app.services.routers_services import analyses_service
 
-from app.auth import get_current_user
-from app.data_transform_utils import get_dataset_id
+from app.core.auth import get_current_user
+from app.services.data_transform_utils import get_dataset_id
 from app.tasks import celery_app, email_tasks
 
 from app.main import app

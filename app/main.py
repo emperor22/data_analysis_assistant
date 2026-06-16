@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import health, auth, datasets, analyses, tasks
-from app.config import Config
+from app.core.config import Config
 from app.services.infra import init_sentry, limiter, LogRequestMiddleware
 
 from slowapi.errors import RateLimitExceeded

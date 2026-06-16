@@ -1,14 +1,12 @@
-from app.crud import (
-    PromptTableOperation,
-    base_engine_sync,
-)
+from app.crud.queries import PromptTableOperation
+from app.crud.models import base_engine_sync
 
-from app.schemas import (
+from app.schemas.enums import (
     TaskStatus,
 )
 
-from app.logger import logger
-from app.config import Config
+from app.core.logger import logger
+from app.core.config import Config
 
 from celery import shared_task
 

@@ -5,16 +5,16 @@ import time
 from app.services.llm import (
     cleanup_agg_col_names,
 )
-from app.exceptions import (
+from app.core.exceptions import (
     RetryableRateLimitException,
 )
 
-from app.crud import (
+from app.crud.queries import (
     PromptTableOperation,
     BlacklistedDatasetsTableOperation,
 )
 
-from app.schemas import (
+from app.schemas.enums import (
     TaskStatus,
 )
 
@@ -36,8 +36,8 @@ from app.tasks.prompt_tasks_helpers import (
 )
 
 
-from app.logger import logger
-from app.config import Config
+from app.core.logger import logger
+from app.core.config import Config
 
 from celery import shared_task
 

@@ -4,22 +4,24 @@ import time
 from app.services.analysis import DataAnalysisProcessor
 
 
-from app.crud import (
+from app.crud.queries import (
     TaskRunTableOperation,
     PromptTableOperation,
 )
 
-from app.schemas import (
-    DataTasks,
+from app.schemas.enums import (
     TaskStatus,
-    RunInfo,
     TaskProcessingRunType,
 )
 
+from app.schemas.routes import RunInfo
+
+from app.schemas.llm_validation import DataTasks
+
 from app.tasks.celery_app import DatabaseTask
 
-from app.logger import logger
-from app.config import Config
+from app.core.logger import logger
+from app.core.config import Config
 
 from celery import shared_task
 

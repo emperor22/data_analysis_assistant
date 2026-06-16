@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request
 from app.services.infra import limiter
-from app.config import Config
+from app.core.config import Config
 
 router = APIRouter()
 

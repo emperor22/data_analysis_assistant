@@ -7,21 +7,24 @@ from app.services.llm import (
     mock_resp_loader,
     write_prompt_and_res,
 )
-from app.exceptions import (
+from app.core.exceptions import (
     BlacklistedDatasetException,
     RateLimitedException,
     ModelNotFoundException,
 )
 
-from app.crud import (
+from app.crud.queries import (
     PromptTableOperation,
     BlacklistedDatasetsTableOperation,
 )
 
-from app.schemas import (
+from app.schemas.llm_validation import (
     DataTasks,
     DatasetAnalysisModelPartOne,
     DatasetAnalysisModelPartTwo,
+)
+
+from app.schemas.enums import (
     TaskProcessingRunType,
     TaskStatus,
 )
@@ -33,8 +36,8 @@ from app.tasks.exception_handlers import (
     handle_validation_error_prompt_task,
 )
 
-from app.logger import logger
-from app.config import Config
+from app.core.logger import logger
+from app.core.config import Config
 
 
 from pydantic import ValidationError

@@ -1,29 +1,33 @@
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 
-from app.auth import get_current_user
-from app.config import Config
+from app.core.auth import get_current_user
+from app.core.config import Config
 from app.services.infra import limiter
 
-from app.crud import (
+from app.crud.queries import (
     PromptTableOperation,
     UserTableOperation,
     TaskRunTableOperation,
     UserCustomizedTasksTableOperation,
+)
+
+from app.crud.dependencies import (
     get_prompt_table_ops,
     get_task_run_table_ops,
     get_user_table_ops,
     get_user_customized_tasks_table_ops,
 )
 
-from app.schemas import (
+from app.schemas.routes import (
     UploadDatasetSchema,
     ExecuteAnalysesSchema,
     AdditionalAnalysesRequestSchema,
-    TaskProcessingRunType,
 )
 
+from app.schemas.enums import TaskProcessingRunType
+
 from app.services.infra import check_if_task_is_valid
-from app.services.analyses_service import (
+from app.services.routers_services.analyses_service import (
     parse_form_json,
     build_data_tasks_context,
     create_initial_analysis_run,

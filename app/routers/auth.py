@@ -6,25 +6,27 @@ from app.services.infra import get_background_tasks, limiter
 from app.tasks import (
     send_email_task,
 )
-from app.crud import (
+from app.crud.queries import (
     UserTableOperation,
-    get_user_table_ops,
 )
-from app.auth import (
+
+from app.crud.dependencies import get_user_table_ops
+
+from app.core.auth import (
     create_access_token,
     generate_random_otp,
     verify_otp,
 )
-from app.schemas import (
+from app.schemas.routes import (
     UserRegisterSchema,
     GetOTPSchema,
     LoginSchema,
 )
 
-from app.config import Config
+from app.core.config import Config
 
 
-from app.logger import logger
+from app.core.logger import logger
 
 
 from sqlalchemy.exc import IntegrityError

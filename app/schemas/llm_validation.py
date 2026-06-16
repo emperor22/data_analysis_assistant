@@ -5,145 +5,12 @@ from pydantic import (
     field_validator,
     ValidationError,
     model_validator,
-    EmailStr,
 )
 from typing import List, Union, Dict, Any, Literal
 import re
 from enum import Enum
-from app.logger import logger
-from app.config import Config, model_list_dct
-from dataclasses import dataclass
-from ast import literal_eval
-
-
-class TaskStatus(Enum):
-    task_queued = "TASK QUEUED"
-
-    waiting_for_initial_request_prompt = "GETTING INITIAL REQUEST PROMPT RESULT"
-    waiting_for_additional_analysis_prompt_result = (
-        "GETTING ADDITIONAL ANALYSES REQUEST PROMPT RESULT"
-    )
-
-    initial_request_prompt_received = "INITIAL REQUEST PROMPT RESULT RECEIVED"
-    additional_analysis_prompt_result_received = (
-        "ADDITIONAL ANALYSES PROMPT RESULT RECEIVED"
-    )
-
-    doing_initial_tasks_run = "RUNNING INITIAL ANALYSES TASKS"
-    doing_additional_tasks_run = "RUNNING ADDITIONAL ANALYSES TASKS"
-    doing_customized_tasks_run = "RUNNING USER CUSTOMIZED ANALYSIS TASKS"
-    doing_customized_tasks_run_with_new_dataset = (
-        "RUNNING USER CUSTOMIZED ANALYSIS TASKS WITH NEW DATASET"
-    )
-
-    initial_tasks_run_finished = "INITIAL ANALYSIS TASKS FINISHED"
-    additional_tasks_run_finished = "ADDITIONAL ANALYSES TASKS FINISHED"
-    customized_tasks_run_finished = "USER CUSTOMIZED ANALYSIS TASKS FINISHED"
-    customized_tasks_run_with_new_dataset_finished = (
-        "USER CUSTOMIZED ANALYSIS TASKS WITH NEW DATASET FINISHED"
-    )
-
-    # failed attempts
-    failed_because_blacklisted_dataset = "TASK FAILED BECAUSE DATASET IS BLACKLISTED"
-
-    failed_because_model_not_found = "TASK FAILED BECAUSE LLM MODEL IS NOT FOUND"
-
-    deleted_because_not_accessed_recently = (
-        "TASK DELETED BECAUSE IT IS NOT ACCESSED FOR SOME TIME"
-    )
-
-    failed_because_rate_limited = "TASK FAILED BECAUSE LLM ENDPOINT IS RATE LIMITED"
-
-
-class TaskProcessingRunType(Enum):
-    first_run_after_request = "first_run_after_request"
-    modified_tasks_execution = "modified_tasks_execution"
-    additional_analyses_request = "additional_analyses_request"
-    modified_tasks_execution_with_new_dataset = (
-        "modified_tasks_execution_with_new_dataset"
-    )
-
-
-@dataclass
-class RunInfo:
-    request_id: str
-    user_id: str
-    parquet_file: str
-    filename: str
-    send_result_to_email: str
-    email: str
-    run_name: str
-
-
-class GetCurrentUserModel(BaseModel):
-    username: str
-    user_id: str
-    email: str
-
-
-class UserRegisterSchema(BaseModel):
-    username: str = Field(min_length=3, max_length=10)
-    email: EmailStr = Field(min_length=5, max_length=40)
-    first_name: str = Field(min_length=3, max_length=20)
-    last_name: str = Field(min_length=3, max_length=20)
-
-
-class ModelAndProviderSchema(BaseModel):
-    provider: Literal[tuple(literal_eval(Config.LLM_PROVIDER_LIST))]  # type: ignore
-    model: str
-
-    @model_validator(mode="after")
-    def check_if_model_is_valid(self):
-        if self.model not in model_list_dct[self.provider]:
-            raise ValueError("model not in the provider's model list")
-
-        return self
-
-
-class UploadDatasetSchema(ModelAndProviderSchema):
-    run_name: str = Field(min_length=1)
-    analysis_task_count: int = Field(lt=Config.MAX_TASK_COUNT + 1)
-    send_result_to_email: bool
-
-
-class UserCustomizedTasksSchema(BaseModel):
-    request_id: str
-    slot: int = Literal[1, 2, 3]
-    tasks: dict = {}
-    operation: Literal["fetch", "delete", "update", "check_if_empty"]
-
-
-class SetImportedTasksSchema(BaseModel):
-    request_id: str
-    task_ids: list
-
-
-class GetOTPSchema(BaseModel):
-    username: str = Field(min_length=1)
-
-
-class LoginSchema(BaseModel):
-    username: str = Field(min_length=1)
-    otp: str = Field(min_length=1)
-
-
-class AdditionalAnalysesRequestSchema(ModelAndProviderSchema):
-    new_tasks_prompt: str = Field(min_length=1)
-    send_result_to_email: bool
-
-
-class SetupAPIKeySchema(BaseModel):
-    key: str = Field(min_length=1)
-    provider: Literal[tuple(literal_eval(Config.LLM_PROVIDER_LIST))]  # type: ignore
-
-
-class JoinDatasetSchema(BaseModel):
-    join_method: Literal["inner", "outer", "left", "right"]
-    join_keys: list[tuple]
-
-
-##################################################################
-
+from app.core.logger import logger
+from app.core.config import Config
 
 class CommonColumnCombinationOperation(BaseModel):
     source_columns: List[str] = Field(min_length=1)  # type: ignore
@@ -549,7 +416,3 @@ class DataTasks(ColumnInfoAndOperations, DatasetAnalysisModelPartTwo):
     common_tasks: list[CommonTaskModel] = Field(min_length=1)
 
     model_config = ConfigDict(extra="ignore")
-
-
-class ExecuteAnalysesSchema(DataTasks):
-    send_result_to_email: bool

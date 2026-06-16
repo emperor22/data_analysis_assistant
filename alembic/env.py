@@ -3,8 +3,8 @@ from logging.config import fileConfig
 
 from alembic import context
 
-from app.config import Config
-from app.crud import Base
+from app.core.config import Config
+from app.crud.models import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -62,7 +62,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    from app.crud import base_engine_sync
+    from app.crud.models import base_engine_sync
 
     connectable = base_engine_sync
 

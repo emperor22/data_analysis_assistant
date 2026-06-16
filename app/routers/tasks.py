@@ -11,27 +11,31 @@ from app.services.infra import (
 
 from app.services.llm import check_if_api_key_valid
 
-from app.crud import (
+from app.crud.queries import (
     PromptTableOperation,
     TaskRunTableOperation,
+    UserCustomizedTasksTableOperation,
+    UserTableOperation,
+)
+
+from app.crud.dependencies import (
     get_prompt_table_ops,
     get_task_run_table_ops,
     get_user_customized_tasks_table_ops,
-    UserCustomizedTasksTableOperation,
     get_redis_client,
-    UserTableOperation,
     get_user_table_ops,
 )
-from app.auth import get_current_user, get_admin, encrypt_api_key
-from app.schemas import (
+
+from app.core.auth import get_current_user, get_admin, encrypt_api_key
+from app.schemas.routes import (
     UserCustomizedTasksSchema,
-    TaskProcessingRunType,
     SetupAPIKeySchema,
 )
+from app.schemas.enums import TaskProcessingRunType
 
-from app.logger import logger
+from app.core.logger import logger
 
-from app.config import Config
+from app.core.config import Config
 
 import json
 

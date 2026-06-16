@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import json
 
-from app.logger import logger
-from app.config import Config
+from app.core.logger import logger
+from app.core.config import Config
 
 import re
 

@@ -8,18 +8,22 @@ from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 from celery import chain
 
-from app.config import Config
-from app.logger import logger
+from app.core.config import Config
+from app.core.logger import logger
 
-from app.exceptions import InvalidDatasetException, FileReadException
+from app.core.exceptions import InvalidDatasetException, FileReadException
 
-from app.schemas import (
+from app.schemas.routes import (
     UploadDatasetSchema,
     ExecuteAnalysesSchema,
     AdditionalAnalysesRequestSchema,
-    RunInfo,
+    RunInfo
+)
+
+from app.schemas.llm_validation import DataTasks
+
+from app.schemas.enums import (
     TaskProcessingRunType,
-    DataTasks,
 )
 
 from app.services.dataset import (
@@ -50,7 +54,7 @@ from app.tasks import (
     send_email_task,
 )
 
-from app.crud import (
+from app.crud.queries import (
     PromptTableOperation,
     UserTableOperation,
     TaskRunTableOperation,

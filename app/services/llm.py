@@ -1,8 +1,8 @@
 from app.services.dataset import get_dataset_snippet
-from app.crud import UserTableOperation
-from app.config import Config, api_key_dct
-from app.logger import logger
-from app.exceptions import RateLimitedException, ModelNotFoundException
+from app.crud.queries import UserTableOperation
+from app.core.config import Config, api_key_dct
+from app.core.logger import logger
+from app.core.exceptions import RateLimitedException, ModelNotFoundException
 
 from string import Template
 
@@ -16,7 +16,7 @@ from datetime import datetime
 
 import httpx
 
-from app.auth import decrypt_api_key
+from app.core.auth import decrypt_api_key
 
 
 class DatasetProcessorForPtOnePrompt:

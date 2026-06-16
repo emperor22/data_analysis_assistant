@@ -1,17 +1,17 @@
-from app.exceptions import (
+from app.core.exceptions import (
     BlacklistedDatasetException,
     RetryableRateLimitException,
     TerminalRateLimitException,
     ModelNotFoundException,
 )
 
-from app.crud import PromptTableOperation, BlacklistedDatasetsTableOperation
+from app.crud.queries import PromptTableOperation, BlacklistedDatasetsTableOperation
 
-from app.schemas import TaskStatus
+from app.schemas.enums import TaskStatus
 
 
-from app.logger import logger
-from app.config import Config
+from app.core.logger import logger
+from app.core.config import Config
 
 
 def handle_validation_error_prompt_task(

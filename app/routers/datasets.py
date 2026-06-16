@@ -12,17 +12,17 @@ from app.services.dataset import (
 from app.services.infra import limiter
 
 
-from app.auth import (
+from app.core.auth import (
     get_current_user,
 )
-from app.schemas import (
+from app.schemas.routes import (
     JoinDatasetSchema,
 )
 
 
-from app.data_transform_utils import clean_column_name, join_df_duckdb
+from app.services.data_transform_utils import clean_column_name, join_df_duckdb
 
-from app.config import Config
+from app.core.config import Config
 
 from pydantic import ValidationError
 

@@ -1,8 +1,8 @@
-from app.schemas import TaskStatus, TaskProcessingRunType
+from app.schemas.enums import TaskStatus, TaskProcessingRunType
 from app.services.analysis import get_attachment_zip_filename
 
-from app.logger import logger
-from app.config import Config
+from app.core.logger import logger
+from app.core.config import Config
 
 
 import json

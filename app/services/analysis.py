@@ -1,15 +1,17 @@
 from fpdf import FPDF
 
-from app.schemas import DataTasks, RunInfo, TaskProcessingRunType
-from app.crud import TaskRunTableOperation
-from app.config import Config, PARAMS_MAP
-from app.logger import logger
+from app.schemas.enums import TaskProcessingRunType
+from app.schemas.routes import RunInfo
+from app.schemas.llm_validation import DataTasks
+from app.crud.queries import TaskRunTableOperation
+from app.core.config import Config, PARAMS_MAP
+from app.core.logger import logger
 
 from app.services.dataset import get_dataset_snippet, save_dataset_req_id
 from app.services.utils import get_current_time_utc
 
 
-from app.data_transform_utils import (
+from app.services.data_transform_utils import (
     groupby_func,
     filter_func,
     get_proportion_func,

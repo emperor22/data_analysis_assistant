@@ -7,9 +7,10 @@ from cryptography.fernet import Fernet
 
 from datetime import datetime, timezone, timedelta
 
-from app.crud import UserTableOperation, get_session
-from app.schemas import GetCurrentUserModel
-from app.config import Config
+from app.crud.queries import UserTableOperation
+from app.crud.dependencies import get_session
+from app.schemas.routes import GetCurrentUserModel
+from app.core.config import Config
 
 import secrets
 
@@ -17,7 +18,7 @@ import hmac
 import hashlib
 import base64
 
-from app.logger import logger
+from app.core.logger import logger
 
 
 def generate_random_otp():

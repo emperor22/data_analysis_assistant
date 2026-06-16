@@ -1,11 +1,11 @@
 from celery import Celery, signals
 
 
-from app.crud import (
+from app.crud.models import (
     base_engine_sync,
 )
 
-from app.config import Config
+from app.core.config import Config
 
 import sentry_sdk
 from sentry_sdk.integrations.celery import CeleryIntegration
