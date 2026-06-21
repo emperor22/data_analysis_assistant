@@ -6,7 +6,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
     depends_on:
       fastapi_app:
         condition: service_healthy
@@ -15,6 +16,12 @@ services:
     networks:
       - app-network
     restart: always
+
+  certbot:
+  image: certbot/certbot
+  volumes:
+    - ./certbot/www:/var/www/certbot
+    - ./certbot/conf:/etc/letsencrypt
 
   redis:
     image: redis:7-alpine
