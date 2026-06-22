@@ -1,5 +1,5 @@
-streamlit
-pandas
-pyarrow
-streamlit-autorefresh
-python-dotenv
+streamlit==1.54.0
+pandas==2.3.1
+pyarrow==21.0.0
+streamlit-autorefresh==1.0.1
+python-dotenv==1.1.1
