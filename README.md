@@ -1,8 +1,6 @@
 # Data Analysis Assistant
 
-### An LLM-powered data analytics tool that actually does what you expect
-
-Data Analysis Assistant reads the structure of your dataset, figures out the best way to analyze it, and runs the necessary steps.
+### A Deterministic LLM-Driven Automated Data Analytics Platform
 
 Instead of letting the AI write and run random code on your machine (which can be risky and unpredictable), this tool treats the AI as a planner. The AI suggests a step-by-step plan, the system checks that plan against a strict set of rules, and then the system executes the safe steps. This keeps your data secure, stops the AI from hallucinating broken code, and ensures you get the exact same results if you run the analysis again.
 
@@ -13,6 +11,8 @@ Demo: [LINK](https://daa-demo.xyz/)
 Sample datasets: [LINK](https://drive.google.com/drive/folders/1KezB3ABQDVa-mlVQ3sGW-GD97bg68rUp?usp=sharing)
 
 ## Workflow Preview
+
+<video src="https://github.com/user-attachments/assets/496e1d8d-cca2-49e9-ac22-f5492da2a083" width="800" height="400" controls></video>
 
 1. Upload a dataset.
 2. The app cleans up the file and builds a profile of the data.
