@@ -2,180 +2,122 @@
 
 [![](https://github.com/emperor22/data_analysis_assistant/actions/workflows/main.yml/badge.svg)](https://github.com/emperor22/data_analysis_assistant/actions/workflows/main.yml)
 
-### A Deterministic LLM-Driven Automated Data Analytics Platform
+### Deterministic LLM-Driven Data Analytics Platform
 
-Uses LLMs to generate analytical workflows from dataset metadata, validates outputs against strict schemas, and executes them through a constrained operation set. LLM output is treated as untrusted planning data. Validation and execution are separated to catch hallucinations and ensure safe, reproducible execution.
+Data Analysis Assistant generates analytical workflows from dataset metadata, validates them against strict schemas, and executes them through a constrained operation set.
 
+LLM output is treated as **untrusted planning data**. Validation and execution are separated to reduce hallucinations, prevent arbitrary code execution, and keep analysis runs reproducible.
 
 ## Live Demo
 
-🔗 [LINK](https://161.118.227.185/)
+Demo: [LINK](https://daa-demo.xyz/)
+Sample datasets: [LINK](https://drive.google.com/drive/folders/1KezB3ABQDVa-mlVQ3sGW-GD97bg68rUp?usp=sharing)
 
-Dataset collections you can try: [LINK](https://drive.google.com/drive/folders/1KezB3ABQDVa-mlVQ3sGW-GD97bg68rUp?usp=sharing)
+## Workflow Preview
 
-## Workflow Lifecycle
+<video src="https://github.com/user-attachments/assets/496e1d8d-cca2-49e9-ac22-f5492da2a083" width="800" height="400" controls></video>
 
-<video src="https://github.com/user-attachments/assets/8e9bae26-976e-45dc-8a93-83822df95f90" width="800" height="400" controls></video>
+1. Upload a dataset
+2. Normalize and profile the data
+3. Generate a structured analysis workflow using an LLM
+4. Validate and filter generated tasks
+5. Review or edit tasks in the UI
+6. Execute validated tasks asynchronously
+7. Render results as tables, charts, Excel files, or ZIP reports
+8. Re-run tasks on the same or compatible datasets
 
-1. Upload dataset
-2. LLM generates a structured analytical workflow (JSON schema enforced)
-3. Run is queued for asynchronous processing (status tracked via UI)
-4. User reviews and optionally edits generated tasks
-5. Deterministic execution engine processes tasks step-by-step
-6. Results rendered as:
+## Key Features
 
-   * Table
-   * Line or bar chart (auto-inferred)
-   * Excel export when output exceeds thresholds
-7. Optional ZIP archive (PDF summary + Excel outputs) delivered via email
-8. Tasks may be modified and re-run on the same or a new dataset
-
-
-## Dataset Normalization & Profiling
+### Dataset Normalization
 
 Raw files are normalized before any LLM interaction.
 
 * Format-agnostic ingestion with size and header validation
-* Canonical column naming and datatype coercion with success-rate thresholds
-* Boolean harmonization and null standardization
-* Datetime detection and automatic time-granularity inference
-* Column-level statistical profiling (missing ratios, skewness, distribution summaries)
-* Deterministic dataset fingerprinting for run isolation
+* Canonical column naming and datatype coercion
+* Boolean, null, and datetime standardization
+* Time-granularity inference
+* Column-level statistical profiling
+* Dataset fingerprinting for run isolation
 
-The LLM receives structured metadata and never raw CSV text.
+The LLM receives **structured metadata**, not raw CSV text.
 
+### LLM Planning & Validation
 
-## Prompt Orchestration
+LLM planning runs through a controlled prompt pipeline.
 
-LLM planning occurs in a controlled, stateful pipeline.
+* Two-stage prompt flow: dataset analysis → task synthesis
+* Metadata-only context injection
+* Strict Pydantic validation
+* Invalid task filtering with request-level logging
+* Dataset blacklisting after repeated invalid responses
+* Rate-limit aware retries with bounded backoff
+* Persisted request state transitions
 
-* Two-stage prompt architecture (dataset analysis → task synthesis)
-* Context injection using validated dataset metadata
-* Strict Pydantic validation of each prompt stage
-* Dataset-level blacklisting after repeated invalid responses
-* Rate-limit aware retry logic with bounded backoff
-* Explicit request state transitions persisted in the database
+Workflows must contain enough valid tasks to proceed. Invalid steps are removed rather than blindly executed.
 
-No prompt result advances without validation and persistence.
+### Safe Analysis Execution
 
+All analysis steps execute through predefined JSON schemas and registered functions.
 
-## LLM Validation Engine
+Supported operations include:
 
-LLM output is filtered, not blindly trusted.
+`groupby` · `filter` · `get_top_or_bottom_N_entries` · `get_proportion` · `get_column_statistics` · `resample_data` · `map` · `map_range` · `date_op` · `math_op`
 
-Invalid steps are removed and logged with request context. Workflows must contain a configurable minimum number of valid tasks to proceed. Partially invalid tasks are logged and filtered out; if too few remain, the request fails gracefully.
+Execution safeguards include:
 
-* Pydantic models use extra="forbid" to reject unexpected fields, catching LLM hallucinations at the validation boundary.
-* Function → model dispatch restricts steps to a registered analysis function
-* Expression–column token matching prevents undeclared references
-* Required dataset columns enforced before execution eligibility
-
-Invalid steps are removed and logged rather than failing the entire workflow. Valid steps proceed to execution, maximizing the utility of partially correct LLM outputs.
-
-
-## Analysis Functions
-
-All analyses execute through a validated JSON schema with predefined operation types. No arbitrary code execution is permitted. Operations are restricted to a whitelist of data transformations (filter, groupby, map, etc.) with Pydantic-validated parameters.
-
-## Core Operations
-
-`groupby` · `filter` · `get_top_or_bottom_N_entries` · `get_proportion` · `get_column_statistics` · `resample_data`
-
-## Structured Transformations
-
-`map` · `map_range` · `date_op` · `math_op` · controlled column combinations
-
-Every step and transformation is schema-validated before dispatch.
-
-
-## Execution Engine
-
-Validated workflows are executed step-by-step against a persisted dataset snapshot.
-
-* Deterministic function dispatch
-* Column existence enforcement at runtime
+* No arbitrary code execution
+* Function-to-model dispatch
+* Column existence checks
+* Expression-column token matching
 * Step-level failure isolation
-* Output size thresholds and export routing
-* Automatic visualization inference (line / bar / table)
+* Output size thresholds
+* Automatic table, line chart, or bar chart rendering
 * Structured result persistence and version tracking
 
-Execution never evaluates arbitrary code.
-
-
 ## Architecture
-```
-  Client
 
-    ↓
-
-FastAPI (Auth + Rate Limit + Request Validation)
-
-    ↓
-
+```text
+Client
+  ↓
+FastAPI
+(Auth, rate limit, request validation)
+  ↓
 Dataset Normalization & Profiling
-
-    ↓
-
-Celery IO Workers (LLM Planning)
-
-    ↓
-
+  ↓
+Celery IO Workers
+(LLM planning)
+  ↓
 Structured Validation & Filtering
-
-    ↓
-
-Celery CPU Workers (Execution of Validated Analysis Plan JSONs)
-
-    ↓
-  
+  ↓
+Celery CPU Workers
+(validated analysis execution)
+  ↓
 Postgres + Artifact Storage + Optional Email Dispatch
 ```
 
 ## Operational Controls
 
-Production safeguards around access, isolation, and workload discipline.
-
-* OTP-based authentication with protected endpoints
-* Segmented worker queues with controlled concurrency
+* OTP-based authentication
+* Protected API endpoints
+* Segmented Celery queues
+* Controlled worker concurrency
 * Endpoint rate limiting
-* Dataset-level blacklisting for datasets with persistent validation failure
-* Redis-backed access tracking and artifact lifecycle cleanup
-* Structured request logging and slow-execution alerts
+* Redis-backed access tracking
+* Artifact lifecycle cleanup
+* Structured request logging
+* Slow-execution alerts
 * BYOK support with credential isolation
-
-
-## Observability
-
-Explicit runtime transparency and failure boundaries.
-
-* Centralized exception monitoring (Sentry)
-* Structured logging for easier error tracing
-* Deterministic task state transitions
-* Clear rejection paths for invalid workflows
-
+* Sentry exception monitoring
 
 ## Technology Stack
 
-**Backend**
-FastAPI · Celery · Redis · Postgres · SQLAlchemy · Pandas · DuckDB · Pydantic
-
-**Frontend**
-Streamlit (workflow inspection and editing)
-
-**Infrastructure**
-Docker Compose · ARM64 builds · Nginx · GitHub Actions · Sentry
-
+**Backend:** FastAPI, Celery, Redis, Postgres, SQLAlchemy, Pandas, DuckDB, Pydantic
+**Frontend:** Streamlit
+**Infrastructure:** Docker Compose, ARM64 builds, Nginx, GitHub Actions, Sentry
 
 ## Testing
 
-Validation-first testing strategy across layers.
-
-* Async API endpoints coverage
-* Celery task validation (eager mode)
-* Dependency overrides for isolation
-* Temporary SQLite database for testing
-
-Run:
+The project uses validation-first tests across API, worker, and persistence layers.
 
 ```bash
 pytest tests
