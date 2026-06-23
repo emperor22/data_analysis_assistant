@@ -1,124 +1,123 @@
 # Data Analysis Assistant
 
-[![](https://github.com/emperor22/data_analysis_assistant/actions/workflows/main.yml/badge.svg)](https://github.com/emperor22/data_analysis_assistant/actions/workflows/main.yml)
+### An LLM-powered data analytics tool that actually does what you expect
 
-### Deterministic LLM-Driven Data Analytics Platform
+Data Analysis Assistant reads the structure of your dataset, figures out the best way to analyze it, and runs the necessary steps.
 
-Data Analysis Assistant generates analytical workflows from dataset metadata, validates them against strict schemas, and executes them through a constrained operation set.
-
-LLM output is treated as **untrusted planning data**. Validation and execution are separated to reduce hallucinations, prevent arbitrary code execution, and keep analysis runs reproducible.
+Instead of letting the AI write and run random code on your machine (which can be risky and unpredictable), this tool treats the AI as a planner. The AI suggests a step-by-step plan, the system checks that plan against a strict set of rules, and then the system executes the safe steps. This keeps your data secure, stops the AI from hallucinating broken code, and ensures you get the exact same results if you run the analysis again.
 
 ## Live Demo
 
 Demo: [LINK](https://daa-demo.xyz/)
+
 Sample datasets: [LINK](https://drive.google.com/drive/folders/1KezB3ABQDVa-mlVQ3sGW-GD97bg68rUp?usp=sharing)
 
 ## Workflow Preview
 
-<video src="https://github.com/user-attachments/assets/496e1d8d-cca2-49e9-ac22-f5492da2a083" width="800" height="400" controls></video>
-
-1. Upload a dataset
-2. Normalize and profile the data
-3. Generate a structured analysis workflow using an LLM
-4. Validate and filter generated tasks
-5. Review or edit tasks in the UI
-6. Execute validated tasks asynchronously
-7. Render results as tables, charts, Excel files, or ZIP reports
-8. Re-run tasks on the same or compatible datasets
+1. Upload a dataset.
+2. The app cleans up the file and builds a profile of the data.
+3. The AI suggests a step-by-step plan for the analysis.
+4. The app double-checks the AI's plan and removes any broken or unsafe steps.
+5. You review or edit the steps in the UI.
+6. The app runs the approved steps in the background.
+7. You get your results as tables, charts, Excel files, or a ZIP report.
+8. You can re-run the exact same steps later on new or updated data.
 
 ## Key Features
 
-### Dataset Normalization
+### Cleaning Up the Dataset First
 
-Raw files are normalized before any LLM interaction.
+Before the AI ever sees your data, the app cleans it up so everything is consistent.
 
-* Format-agnostic ingestion with size and header validation
-* Canonical column naming and datatype coercion
-* Boolean, null, and datetime standardization
-* Time-granularity inference
-* Column-level statistical profiling
-* Dataset fingerprinting for run isolation
+* Accepts various file types and handles size limits and header checks automatically.
+* Converts column names into a standard format and forces data into the right types (like making sure numbers act like numbers).
+* Fixes messy formatting for booleans (True/False), missing values, and dates.
+* Figures out time intervals automatically (like detecting if your data is daily or monthly).
+* Calculates basic stats for each column.
+* Creates a unique digital fingerprint for the dataset so runs don't mix up.
 
-The LLM receives **structured metadata**, not raw CSV text.
+Crucially, **the AI never looks at your raw data rows**. It only looks at this clean, high-level summary.
 
-### LLM Planning & Validation
+### AI Planning & Double-Checking
 
-LLM planning runs through a controlled prompt pipeline.
+The app guides the AI through a careful, multi-step prompting process to keep it on track.
 
-* Two-stage prompt flow: dataset analysis → task synthesis
-* Metadata-only context injection
-* Strict Pydantic validation
-* Invalid task filtering with request-level logging
-* Dataset blacklisting after repeated invalid responses
-* Rate-limit aware retries with bounded backoff
-* Persisted request state transitions
+* Uses a two-step logic flow: first the AI analyzes the data structure, then it creates the actual steps.
+* Only feeds the clean summary metadata to the AI, keeping your raw data private.
+* Uses Pydantic to strictly enforce that the AI's response matches the exact format the app expects.
+* Automatically throws out invalid steps and logs exactly what went wrong.
+* Temporarily blocks a dataset if the AI keeps making mistakes on it.
+* Handles API rate limits gracefully by waiting and retrying automatically.
+* Saves the status of your request at every step of the way.
 
-Workflows must contain enough valid tasks to proceed. Invalid steps are removed rather than blindly executed.
+If the AI generates too many broken steps, the app stops the run. It will only move forward if it has a solid, valid plan.
 
-### Safe Analysis Execution
+### Safe Execution
 
-All analysis steps execute through predefined JSON schemas and registered functions.
+The app never runs raw code generated by the AI. Instead, it matches the AI's plan against a safe, predefined list of allowed actions.
 
-Supported operations include:
+Supported actions include:
 
 `groupby` · `filter` · `get_top_or_bottom_N_entries` · `get_proportion` · `get_column_statistics` · `resample_data` · `map` · `map_range` · `date_op` · `math_op`
 
-Execution safeguards include:
+To keep everything running safely:
 
-* No arbitrary code execution
-* Function-to-model dispatch
-* Column existence checks
-* Expression-column token matching
-* Step-level failure isolation
-* Output size thresholds
-* Automatic table, line chart, or bar chart rendering
-* Structured result persistence and version tracking
+* No raw, arbitrary code is ever executed on the server.
+* The system checks that the columns the AI wants to use actually exist in your file.
+* If one step fails, it won't crash the whole analysis run.
+* Keeps file sizes under control so you don't accidentally generate a massive, unmanageable file.
+* Automatically turns data into tables, line charts, or bar charts.
+* Tracks history and versions so you can look back at past results.
 
 ## Architecture
 
 ```text
-Client
+User Interface
   ↓
-FastAPI
-(Auth, rate limit, request validation)
+FastAPI Backend
+(Handles logins, rate limits, and request checks)
   ↓
-Dataset Normalization & Profiling
+Data Cleaning & Profiling
   ↓
-Celery IO Workers
-(LLM planning)
+Background Workers (Celery IO)
+(Asks the AI to generate the plan)
   ↓
-Structured Validation & Filtering
+Validation & Filtering
+(Ensures the AI plan is safe and realistic)
   ↓
-Celery CPU Workers
-(validated analysis execution)
+Background Workers (Celery CPU)
+(Runs the actual data analysis steps)
   ↓
-Postgres + Artifact Storage + Optional Email Dispatch
+Database (Postgres) + File Storage + Optional Email Alerts
+
 ```
 
-## Operational Controls
+## Security & Operational Controls
 
-* OTP-based authentication
-* Protected API endpoints
-* Segmented Celery queues
-* Controlled worker concurrency
-* Endpoint rate limiting
-* Redis-backed access tracking
-* Artifact lifecycle cleanup
-* Structured request logging
-* Slow-execution alerts
-* BYOK support with credential isolation
-* Sentry exception monitoring
+* Secure logins using One-Time Passwords (OTP).
+* Fully protected API endpoints.
+* Separate background processing queues so heavy jobs don't slow down quick ones.
+* Strict limits on how many jobs run at the same time.
+* API rate limiting and usage tracking via Redis to prevent abuse.
+* Automatic cleanup of old generated files and reports.
+* Detailed logs for every single request.
+* Alerts for jobs that take unusually long to finish.
+* Bring-Your-Own-Key (BYOK) support, keeping your AI API keys isolated and secure.
+* Error tracking and monitoring via Sentry.
 
 ## Technology Stack
 
 **Backend:** FastAPI, Celery, Redis, Postgres, SQLAlchemy, Pandas, DuckDB, Pydantic
+
 **Frontend:** Streamlit
+
 **Infrastructure:** Docker Compose, ARM64 builds, Nginx, GitHub Actions, Sentry
 
 ## Testing
 
-The project uses validation-first tests across API, worker, and persistence layers.
+The project includes a robust test suite that focuses heavily on checking data validation across the API, background workers, and storage layers.
 
 ```bash
 pytest tests
+
 ```
