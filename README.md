@@ -115,7 +115,7 @@ Database (Postgres) + File Storage + Optional Email Alerts
 
 ## Testing
 
-The project includes a robust test suite that focuses heavily on checking data validation across the API, background workers, and storage layers.
+The project includes some tests that confirm the main workflow works by testing the endpoints and the Celery tasks.
 
 ```bash
 pytest tests
