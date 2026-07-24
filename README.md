@@ -1,182 +1,123 @@
 # Data Analysis Assistant
 
-[![](https://github.com/emperor22/data_analysis_assistant/actions/workflows/main.yml/badge.svg)](https://github.com/emperor22/data_analysis_assistant/actions/workflows/main.yml)
-
 ### A Deterministic LLM-Driven Automated Data Analytics Platform
 
-Uses LLMs to generate analytical workflows from dataset metadata, validates outputs against strict schemas, and executes them through a constrained operation set. LLM output is treated as untrusted planning data. Validation and execution are separated to catch hallucinations and ensure safe, reproducible execution.
-
+Instead of letting the AI write and run random code on your machine (which can be risky and unpredictable), this tool treats the AI as a planner. The AI suggests a step-by-step plan, the system checks that plan against a strict set of rules, and then the system executes the safe steps. This keeps your data secure, stops the AI from hallucinating broken code, and ensures you get the exact same results if you run the analysis again.
 
 ## Live Demo
 
-🔗 [LINK](https://161.118.227.185/)
+Demo: [LINK](https://daa-demo.xyz/)
 
-Dataset collections you can try: [LINK](https://drive.google.com/drive/folders/1KezB3ABQDVa-mlVQ3sGW-GD97bg68rUp?usp=sharing)
+Sample datasets: [LINK](https://drive.google.com/drive/folders/1KezB3ABQDVa-mlVQ3sGW-GD97bg68rUp?usp=sharing)
 
-## Workflow Lifecycle
+## Workflow Preview
 
-<video src="https://github.com/user-attachments/assets/8e9bae26-976e-45dc-8a93-83822df95f90" width="800" height="400" controls></video>
+<video src="https://github.com/user-attachments/assets/496e1d8d-cca2-49e9-ac22-f5492da2a083" width="800" height="400" controls></video>
 
-1. Upload dataset
-2. LLM generates a structured analytical workflow (JSON schema enforced)
-3. Run is queued for asynchronous processing (status tracked via UI)
-4. User reviews and optionally edits generated tasks
-5. Deterministic execution engine processes tasks step-by-step
-6. Results rendered as:
+1. Upload a dataset.
+2. The app cleans up the file and builds a profile of the data.
+3. The AI suggests a step-by-step plan for the analysis.
+4. The app double-checks the AI's plan and removes any broken or unsafe steps.
+5. You review or edit the steps in the UI.
+6. The app runs the approved steps in the background.
+7. You get your results as tables, charts, Excel files, or a ZIP report.
+8. You can re-run the exact same steps later on new or updated data.
 
-   * Table
-   * Line or bar chart (auto-inferred)
-   * Excel export when output exceeds thresholds
-7. Optional ZIP archive (PDF summary + Excel outputs) delivered via email
-8. Tasks may be modified and re-run on the same or a new dataset
+## Key Features
 
+### Cleaning Up the Dataset First
 
-## Dataset Normalization & Profiling
+Before the AI ever sees your data, the app cleans it up so everything is consistent.
 
-Raw files are normalized before any LLM interaction.
+* Accepts various file types and handles size limits and header checks automatically.
+* Converts column names into a standard format and forces data into the right types (like making sure numbers act like numbers).
+* Fixes messy formatting for booleans (True/False), missing values, and dates.
+* Figures out time intervals automatically (like detecting if your data is daily or monthly).
+* Calculates basic stats for each column.
+* Creates a unique digital fingerprint for the dataset so runs don't mix up.
 
-* Format-agnostic ingestion with size and header validation
-* Canonical column naming and datatype coercion with success-rate thresholds
-* Boolean harmonization and null standardization
-* Datetime detection and automatic time-granularity inference
-* Column-level statistical profiling (missing ratios, skewness, distribution summaries)
-* Deterministic dataset fingerprinting for run isolation
+Crucially, **the AI never looks at your raw data rows**. It only looks at this clean, high-level summary.
 
-The LLM receives structured metadata and never raw CSV text.
+### AI Planning & Double-Checking
 
+The app guides the AI through a careful, multi-step prompting process to keep it on track.
 
-## Prompt Orchestration
+* Uses a two-step logic flow: first the AI analyzes the data structure, then it creates the actual steps.
+* Only feeds the clean summary metadata to the AI, keeping your raw data private.
+* Uses Pydantic to strictly enforce that the AI's response matches the exact format the app expects.
+* Automatically throws out invalid steps and logs exactly what went wrong.
+* Temporarily blocks a dataset if the AI keeps making mistakes on it.
+* Handles API rate limits gracefully by waiting and retrying automatically.
+* Saves the status of your request at every step of the way.
 
-LLM planning occurs in a controlled, stateful pipeline.
+If the AI generates too many broken steps, the app stops the run. It will only move forward if it has a solid, valid plan.
 
-* Two-stage prompt architecture (dataset analysis → task synthesis)
-* Context injection using validated dataset metadata
-* Strict Pydantic validation of each prompt stage
-* Dataset-level blacklisting after repeated invalid responses
-* Rate-limit aware retry logic with bounded backoff
-* Explicit request state transitions persisted in the database
+### Safe Execution
 
-No prompt result advances without validation and persistence.
+The app never runs raw code generated by the AI. Instead, it matches the AI's plan against a safe, predefined list of allowed actions.
 
+Supported actions include:
 
-## LLM Validation Engine
+`groupby` · `filter` · `get_top_or_bottom_N_entries` · `get_proportion` · `get_column_statistics` · `resample_data` · `map` · `map_range` · `date_op` · `math_op`
 
-LLM output is filtered, not blindly trusted.
+To keep everything running safely:
 
-Invalid steps are removed and logged with request context. Workflows must contain a configurable minimum number of valid tasks to proceed. Partially invalid tasks are logged and filtered out; if too few remain, the request fails gracefully.
-
-* Pydantic models use extra="forbid" to reject unexpected fields, catching LLM hallucinations at the validation boundary.
-* Function → model dispatch restricts steps to a registered analysis function
-* Expression–column token matching prevents undeclared references
-* Required dataset columns enforced before execution eligibility
-
-Invalid steps are removed and logged rather than failing the entire workflow. Valid steps proceed to execution, maximizing the utility of partially correct LLM outputs.
-
-
-## Analysis Functions
-
-All analyses execute through a validated JSON schema with predefined operation types. No arbitrary code execution is permitted. Operations are restricted to a whitelist of data transformations (filter, groupby, map, etc.) with Pydantic-validated parameters.
-
-## Core Operations
-
-`groupby` · `filter` · `get_top_or_bottom_N_entries` · `get_proportion` · `get_column_statistics` · `resample_data`
-
-## Structured Transformations
-
-`map` · `map_range` · `date_op` · `math_op` · controlled column combinations
-
-Every step and transformation is schema-validated before dispatch.
-
-
-## Execution Engine
-
-Validated workflows are executed step-by-step against a persisted dataset snapshot.
-
-* Deterministic function dispatch
-* Column existence enforcement at runtime
-* Step-level failure isolation
-* Output size thresholds and export routing
-* Automatic visualization inference (line / bar / table)
-* Structured result persistence and version tracking
-
-Execution never evaluates arbitrary code.
-
+* No raw, arbitrary code is ever executed on the server.
+* The system checks that the columns the AI wants to use actually exist in your file.
+* If one step fails, it won't crash the whole analysis run.
+* Keeps file sizes under control so you don't accidentally generate a massive, unmanageable file.
+* Automatically turns data into tables, line charts, or bar charts.
+* Tracks history and versions so you can look back at past results.
 
 ## Architecture
-```
-  Client
 
-    ↓
+```text
+User Interface
+  ↓
+FastAPI Backend
+(Handles logins, rate limits, and request checks)
+  ↓
+Data Cleaning & Profiling
+  ↓
+Background Workers (Celery IO)
+(Asks the AI to generate the plan)
+  ↓
+Validation & Filtering
+(Ensures the AI plan is safe and realistic)
+  ↓
+Background Workers (Celery CPU)
+(Runs the actual data analysis steps)
+  ↓
+Database (Postgres) + File Storage + Optional Email Alerts
 
-FastAPI (Auth + Rate Limit + Request Validation)
-
-    ↓
-
-Dataset Normalization & Profiling
-
-    ↓
-
-Celery IO Workers (LLM Planning)
-
-    ↓
-
-Structured Validation & Filtering
-
-    ↓
-
-Celery CPU Workers (Execution of Validated Analysis Plan JSONs)
-
-    ↓
-  
-Postgres + Artifact Storage + Optional Email Dispatch
 ```
 
-## Operational Controls
+## Security & Operational Controls
 
-Production safeguards around access, isolation, and workload discipline.
-
-* OTP-based authentication with protected endpoints
-* Segmented worker queues with controlled concurrency
-* Endpoint rate limiting
-* Dataset-level blacklisting for datasets with persistent validation failure
-* Redis-backed access tracking and artifact lifecycle cleanup
-* Structured request logging and slow-execution alerts
-* BYOK support with credential isolation
-
-
-## Observability
-
-Explicit runtime transparency and failure boundaries.
-
-* Centralized exception monitoring (Sentry)
-* Structured logging for easier error tracing
-* Deterministic task state transitions
-* Clear rejection paths for invalid workflows
-
+* Secure logins using One-Time Passwords (OTP).
+* Fully protected API endpoints.
+* Separate background processing queues so heavy jobs don't slow down quick ones.
+* Strict limits on how many jobs run at the same time.
+* API rate limiting and usage tracking via Redis to prevent abuse.
+* Automatic cleanup of old generated files and reports.
+* Detailed logs for every single request.
+* Alerts for jobs that take unusually long to finish.
+* Bring-Your-Own-Key (BYOK) support, keeping your AI API keys isolated and secure.
+* Error tracking and monitoring via Sentry.
 
 ## Technology Stack
 
-**Backend**
-FastAPI · Celery · Redis · Postgres · SQLAlchemy · Pandas · DuckDB · Pydantic
+**Backend:** FastAPI, Celery, Redis, Postgres, SQLAlchemy, Pandas, DuckDB, Pydantic
 
-**Frontend**
-Streamlit (workflow inspection and editing)
+**Frontend:** Streamlit
 
-**Infrastructure**
-Docker Compose · ARM64 builds · Nginx · GitHub Actions · Sentry
-
+**Infrastructure:** Docker Compose, ARM64 builds, Nginx, GitHub Actions, Sentry
 
 ## Testing
 
-Validation-first testing strategy across layers.
-
-* Async API endpoints coverage
-* Celery task validation (eager mode)
-* Dependency overrides for isolation
-* Temporary SQLite database for testing
-
-Run:
+The project includes some tests that confirm the main workflow works by testing the endpoints and the Celery tasks.
 
 ```bash
 pytest tests
+
 ```
