@@ -294,7 +294,7 @@ class DataAnalysisProcessor:
         self.common_tasks_modified = common_tasks_modified
 
     def _process_col_transform_and_combination_helper(
-        self, tasks, fn_map=None, is_col_combination_task=False
+        self, tasks, is_col_combination_task=False
     ):
         tmp = self.df.copy()
         tasks_w_status = []
@@ -306,7 +306,7 @@ class DataAnalysisProcessor:
 
             try:
                 func = (
-                    fn_map[operation["type"]]
+                    self.column_transform_fn_map[operation["type"]]
                     if not is_col_combination_task
                     else get_column_combination_func
                 )
@@ -339,9 +339,7 @@ class DataAnalysisProcessor:
         )
 
         tasks_w_status = self._process_col_transform_and_combination_helper(
-            tasks=column_transformation_tasks,
-            fn_map=self.column_transform_fn_map,
-            is_col_combination_task=False,
+            tasks=column_transformation_tasks, is_col_combination_task=False
         )
 
         self.task_run_table_ops.update_column_transform_task_status_sync(
@@ -607,8 +605,6 @@ def result_save_handler(
         y_axis_col = [i for i in df.columns if i != x_axis_col][0]
 
         return x_axis_col, y_axis_col
-
-    logger.debug(f"run type is {run_type}")
 
     # refactor this into dictionary dispatch
     save_path_dct = {

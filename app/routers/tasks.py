@@ -41,6 +41,8 @@ import json
 
 import os
 
+from werkzeug.utils import secure_filename
+
 
 router = APIRouter()
 
@@ -241,8 +243,8 @@ async def download_excel_result(
     if task_type not in ["original_tasks", "customized_tasks"]:
         raise HTTPException(status_code=400, detail="not a valid task_type category")
 
-    # task_id = secure_filename(str(task_id))
-    # request_id = secure_filename(request_id)
+    task_id = secure_filename(str(task_id))
+    request_id = secure_filename(request_id)
 
     file_path = (
         f"{Config.DATASET_SAVE_PATH}/{request_id}/{task_type}/artifacts/{task_id}.xlsx"

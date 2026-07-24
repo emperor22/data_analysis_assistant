@@ -16,7 +16,7 @@ from datetime import datetime
 
 import httpx
 
-from app.core.auth import decrypt_api_key
+from app.core.auth import encrypt_api_key
 
 
 class DatasetProcessorForPtOnePrompt:
@@ -378,11 +378,11 @@ async def check_if_api_key_valid(key, provider):
 
 
 async def get_api_key(user_table_ops: UserTableOperation, user_id, provider):
-    default_api_key = api_key_dct[provider]
-    user_api_key = await user_table_ops.get_api_key(user_id, provider)
+    default_api_key = encrypt_api_key(api_key_dct[provider])
+    user_api_key_encrypted = await user_table_ops.get_api_key(user_id, provider)
 
-    if user_api_key:
+    if user_api_key_encrypted:
         logger.debug("using user api key")
-        return decrypt_api_key(user_api_key)
+        return user_api_key_encrypted
 
     return default_api_key

@@ -21,6 +21,8 @@ def test_get_prompt_result_task(mocker, get_prompt_result_data):
     resp_pt2_file = get_prompt_result_data["resp_pt2_file"]
     prompt_pt_1 = ""
 
+    mocker.patch("app.tasks.prompt_tasks.decrypt_api_key")
+
     mock_change_request_status_sync = mocker.patch(
         "app.tasks.prompt_tasks.PromptTableOperation.change_request_status_sync"
     )
@@ -71,7 +73,7 @@ def test_get_additional_analyses_prompt_result_task(
     mock_change_request_status_sync = mocker.patch(
         "app.tasks.prompt_tasks.PromptTableOperation.change_request_status_sync"
     )
-
+    mocker.patch("app.tasks.prompt_tasks.decrypt_api_key")
     mocker.patch("app.tasks.prompt_tasks.PromptTableOperation.get_prompt_result_sync")
 
     res = get_additional_analyses_prompt_result_task(

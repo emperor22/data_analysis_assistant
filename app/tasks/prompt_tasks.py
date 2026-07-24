@@ -9,6 +9,8 @@ from app.core.exceptions import (
     RetryableRateLimitException,
 )
 
+from app.core.auth import decrypt_api_key
+
 from app.crud.queries import (
     PromptTableOperation,
     BlacklistedDatasetsTableOperation,
@@ -88,6 +90,8 @@ def get_prompt_result_task(
     )
 
     start_time = time.perf_counter()
+
+    api_key = decrypt_api_key(api_key)
 
     engine = self.get_engine()
 
@@ -239,6 +243,8 @@ def get_additional_analyses_prompt_result_task(
     )
 
     start_time = time.perf_counter()
+
+    api_key = decrypt_api_key(api_key)
 
     engine = self.get_engine()
 
