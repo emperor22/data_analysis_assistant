@@ -851,7 +851,13 @@ def render_progress_table():
 
     res = res["request_ids"]
 
-    for req_id, req_name, req_filename, req_date, req_status in res:
+    def key_for_tasks_sorting(task):
+        date = task[3]
+        return date
+
+    sorted_res = sorted(res, key=key_for_tasks_sorting)
+
+    for req_id, req_name, req_filename, req_date, req_status in sorted_res:
         cols = st.columns(5)
         cols[0].write(truncate_text(req_id))
         cols[1].write(truncate_text(req_name))
