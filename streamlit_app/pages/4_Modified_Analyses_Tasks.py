@@ -31,6 +31,7 @@ import pandas as pd
 cols_per_row = 1
 max_task_count = 30
 
+ACCEPTED_FILE_TYPES = ["csv", "xlsx"]
 
 request_id = render_request_ids()
 
@@ -333,8 +334,9 @@ with task_overview_tab:
         new_dataset_task_req = st.file_uploader(
             "Select new dataset",
             accept_multiple_files=False,
-            type=["csv"],
+            type=ACCEPTED_FILE_TYPES,
             max_upload_size=50,
+            help="Accepts CSV and Excel files. For Excel files, the app will assume the dataset exists on the first sheet.",
         )
         st.write("---")
 

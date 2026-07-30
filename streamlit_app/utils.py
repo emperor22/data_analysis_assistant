@@ -289,6 +289,12 @@ def render_request_ids():
             st.stop()
 
         task_ids = [i for i in task_ids if not is_task_still_processing(i[-1])]
+
+        def key_for_tasks_sorting(task):
+            date = task[3]
+            return date
+
+        task_ids = sorted(task_ids, key=key_for_tasks_sorting)
         task_ids_choices = [""] + [render_task_id_data(i) for i in task_ids]
 
         task_ids_select = st.selectbox(

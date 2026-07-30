@@ -102,6 +102,8 @@ class Configs(BaseSettings):
 
     N_ROWS_READ_UPLOAD_FILE: int = 100
 
+    MAX_FILE_SIZE: int = 50 * 1024 * 1024
+
     DATASET_ROW_THRESHOLD_BEFORE_EXPORT: int = 20
     DATASET_COLUMNS_THRESHOLD_BEFORE_EXPORT: int = 5
 
@@ -110,6 +112,9 @@ class Configs(BaseSettings):
 
     MAX_DATAFRAME_ROWS: int = 500000
     MAX_DATAFRAME_COLS: int = 100
+
+    HEADER_SCAN_ROWS: int = 10
+    SUPPORTED_DELIMITERS: str = ",;\t|"
 
     MAX_DATAFRAME_ROWS_JOIN_UTIL: int = 100000
     MAX_DATAFRAME_COLS_JOIN_UTIL: int = 10

@@ -10,6 +10,13 @@ from app.core.logger import logger
 from app.services.dataset import get_dataset_snippet, save_dataset_req_id
 from app.services.utils import get_current_time_utc
 
+from app.services.plot_recommender import (
+    resolve_plot_recommendation,
+    create_matplotlib_chart,
+    save_dataframe_export,
+    save_figure,
+)
+
 
 from app.services.data_transform_utils import (
     groupby_func,
@@ -26,9 +33,7 @@ from app.services.data_transform_utils import (
     get_column_properties,
     col_transform_and_combination_parse_helper,
     handle_datetime_columns_serialization,
-    determine_result_output_type,
 )
-from typing import Literal
 
 from glob import glob
 
@@ -38,8 +43,6 @@ import json
 import os
 import zipfile
 
-import matplotlib.pyplot as plt
-import seaborn as sns
 from string import Template
 
 
@@ -258,21 +261,22 @@ class DataAnalysisProcessor:
                 # this should be refactored into a function which processes all task results all at once
                 logger.debug(f"processing task {task.task_id}")
 
-                res_type = determine_result_output_type(tmp)
-
-                result_save_handler(
-                    df=tmp,
-                    run_type=self.run_type,
-                    task_id=task.task_id,
-                    task_name=task.name,
-                    request_id=self.request_id,
-                    res_type=res_type,
+                force_table_export = (
+                    tmp.shape[0] > Config.MAX_VISUAL_ROWS
+                    or tmp.shape[1] > Config.MAX_VISUAL_COLS
                 )
 
-                if not (
-                    len(tmp) > Config.DATASET_ROW_THRESHOLD_BEFORE_EXPORT
-                    or len(tmp.columns) > Config.DATASET_COLUMNS_THRESHOLD_BEFORE_EXPORT
-                ):
+                _ = result_save_handler(
+                    df=tmp,
+                    analysis_steps=steps,
+                    task_id=task.task_id,
+                    run_type=self.run_type,
+                    task_name=task.name,
+                    request_id=self.request_id,
+                    force_table_export=force_table_export,
+                )
+
+                if not force_table_export:
                     tmp = handle_datetime_columns_serialization(tmp)
                     task_modified["status"] = "successful"
                     task_modified["result"] = tmp.to_dict(
@@ -585,28 +589,14 @@ def remove_file_w_extension(dir_, extension):
 
 def result_save_handler(
     df,
+    analysis_steps,
     task_id,
     run_type,
     task_name,
     request_id,
-    res_type=Literal["BAR_CHART", "LINE_CHART", "DISPLAY_TABLE", "TABLE_EXPORT"],
+    force_table_export=False,
 ):
-    # this function gets the appropriate column names if the res_type is chart, create the chart and save it
-    # if output is too big then it'll save the excel
 
-    def get_bar_chart_cols(df):
-        x_axis_col = [i for i in df.columns if "object" in str(df[i].dtype)][0]
-        y_axis_col = [i for i in df.columns if i != x_axis_col][0]
-
-        return x_axis_col, y_axis_col
-
-    def get_line_chart_cols(df):
-        x_axis_col = [i for i in df.columns if "datetime" in str(df[i].dtype)][0]
-        y_axis_col = [i for i in df.columns if i != x_axis_col][0]
-
-        return x_axis_col, y_axis_col
-
-    # refactor this into dictionary dispatch
     save_path_dct = {
         TaskProcessingRunType.first_run_after_request.value: f"{Config.DATASET_SAVE_PATH}/{request_id}/original_tasks/artifacts",
         TaskProcessingRunType.additional_analyses_request.value: f"{Config.DATASET_SAVE_PATH}/{request_id}/original_tasks/artifacts",
@@ -629,35 +619,59 @@ def result_save_handler(
     if os.path.exists(save_path_table_export):
         os.remove(save_path_table_export)
 
-    # refactor these two into their own functions
+    if force_table_export:
+        recommendation = {
+            "chart_type": "table_export",
+            "x_axis": None,
+            "y_axis": None,
+            "series": None,
+            "reason": "Table export was explicitly requested.",
+        }
+    else:
+        recommendation = resolve_plot_recommendation(
+            df=df,
+            analysis_steps=analysis_steps,
+        )
+
+    chart_type = recommendation["chart_type"]
+
+    if chart_type == "table_export":
+        save_dataframe_export(
+            df=df,
+            export_path=save_path_table_export,
+        )
+        return recommendation
+
+    if chart_type == "table":
+        return recommendation
+
     try:
-        if res_type == "BAR_CHART":
-            x_col, y_col = get_bar_chart_cols(df)
-            fig, ax = plt.subplots(figsize=(12, 6))
-            sns.barplot(df, x=x_col, y=y_col, ax=ax)
-            plt.xticks(rotation=45, ha="right")
-            plt.title(task_name)
-            fig.tight_layout()
-            fig.savefig(save_path_plot)
-            plt.close(fig)
+        fig = create_matplotlib_chart(
+            df=df,
+            recommendation=recommendation,
+            title=task_name,
+        )
 
-        elif res_type == "LINE_CHART":
-            x_col, y_col = get_line_chart_cols(df)
-            fig, ax = plt.subplots(figsize=(12, 6))
-            sns.lineplot(df, x=x_col, y=y_col, ax=ax)
-            plt.xticks(rotation=45, ha="right")
-            plt.title(task_name)
-            fig.tight_layout()
-            fig.savefig(save_path_plot)
-            plt.close(fig)
+        save_figure(
+            fig=fig,
+            output_path=save_path_plot,
+        )
+
     except Exception:
-        res_type == "DISPLAY_TABLE"
+        logger.exception(
+            "Failed to render chart for task_id=%s. Falling back to table.",
+            task_id,
+        )
 
-    if res_type == "DISPLAY_TABLE":
-        return
+        recommendation = {
+            "chart_type": "table",
+            "x_axis": None,
+            "y_axis": None,
+            "series": None,
+            "reason": "Chart rendering failed; displaying the result as a table.",
+        }
 
-    if res_type == "TABLE_EXPORT":
-        df.to_excel(save_path_table_export, index=False)
+    return recommendation
 
 
 def get_result_dct(common_tasks_dct):

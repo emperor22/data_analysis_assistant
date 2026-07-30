@@ -2,7 +2,6 @@ from app.services.data_transform_utils import (
     clean_dataset,
     get_granularity_map,
     get_dataset_id,
-    is_numeric,
 )
 from app.core.exceptions import InvalidDatasetException, FileReadException
 from app.core.config import Config
@@ -15,23 +14,32 @@ import pandas as pd
 import io
 import csv
 import os
+import math
 
 
 class FileReader(ABC):
     def __init__(self, upload_file: UploadFile):
         self.file_content = upload_file.file.read()
-        self.filename = upload_file.filename
+        self.filename = upload_file.filename or "uploaded_file"
         self.granularity_map = {}
-        self.df = None
+        self.df: pd.DataFrame | None = None
+
+        if not self.file_content:
+            raise InvalidDatasetException("The uploaded file is empty.")
 
     def get_dataframe_dict(self):
         self._read_file()
 
+        if self.df is None:
+            raise InvalidDatasetException("No dataframe was produced.")
+
         self.df = clean_dataset(self.df)
+        self._validate_dataset()
+
         self.granularity_map = get_granularity_map(self.df)
 
-        self._validate_dataset()
-        sorted_unique_cols = sorted(list(set(self.df.columns)))
+        sorted_unique_cols = sorted({str(column) for column in self.df.columns})
+
         return {
             "filename": self.filename,
             "dataframe": self.df,
@@ -42,33 +50,134 @@ class FileReader(ABC):
 
     @abstractmethod
     def _read_file(self, nrows=None):
-        """Reads the file and returns a pandas dataframe"""
-        pass
+        raise NotImplementedError
 
     def _validate_dataset(self):
-        if (
-            self.df.shape[0] > Config.MAX_DATAFRAME_ROWS
-            or self.df.shape[1] > Config.MAX_DATAFRAME_COLS
-        ) or not self._dataset_has_header:
-            raise InvalidDatasetException
+        if self.df is None:
+            raise InvalidDatasetException("No dataset was loaded.")
+
+        rows, columns = self.df.shape
+
+        if rows == 0 or columns == 0:
+            raise InvalidDatasetException("The dataset is empty.")
+
+        if rows > Config.MAX_DATAFRAME_ROWS:
+            raise InvalidDatasetException(
+                f"Dataset exceeds {Config.MAX_DATAFRAME_ROWS} rows."
+            )
+
+        if columns > Config.MAX_DATAFRAME_COLS:
+            raise InvalidDatasetException(
+                f"Dataset exceeds {Config.MAX_DATAFRAME_COLS} columns."
+            )
+
+        if not self._dataset_has_header():
+            raise InvalidDatasetException(
+                "The dataset does not appear to have a usable header."
+            )
+
+    def _dataset_has_header(self):
+        if self.df is None or len(self.df.columns) == 0:
+            return False
+
+        column_names = [str(column).strip() for column in self.df.columns]
+
+        if not any(column_names):
+            return False
+
+        # reject when every header was generated from a blank cell.
+        if all(name.lower().startswith("unnamed:") for name in column_names):
+            return False
 
         return True
 
-    def _dataset_has_header(self):
-        return not any(is_numeric(col) for col in self.df.columns)
+    @staticmethod
+    def _read_limit(nrows):
+        if nrows is not None:
+            return min(nrows, Config.MAX_DATAFRAME_ROWS + 1)
 
+        return Config.MAX_DATAFRAME_ROWS + 1
 
-class CsvReader(FileReader):
-    def _read_file(self, nrows=None) -> pd.DataFrame:
-        try:
-            self.df = pd.read_csv(
-                io.BytesIO(self.file_content),
-                encoding="unicode_escape",
-                sep=None,
-                nrows=nrows,
+    @staticmethod
+    def _validate_size_early(df: pd.DataFrame):
+        if len(df) > Config.MAX_DATAFRAME_ROWS:
+            raise InvalidDatasetException(
+                f"Dataset exceeds {Config.MAX_DATAFRAME_ROWS} rows."
             )
-        except Exception:
-            raise FileReadException
+
+        if len(df.columns) > Config.MAX_DATAFRAME_COLS:
+            raise InvalidDatasetException(
+                f"Dataset exceeds {Config.MAX_DATAFRAME_COLS} columns."
+            )
+
+
+def infer_simple_header_row(
+    sample: pd.DataFrame,
+    minimum_populated_cells=2,
+    minimum_populated_ratio=0.5,
+):
+    if sample.empty:
+        raise InvalidDatasetException("The file does not contain data.")
+
+    populated_counts = sample.apply(
+        lambda row: int(row.map(_has_value).sum()),
+        axis=1,
+    )
+
+    non_empty_counts = populated_counts[populated_counts > 0]
+
+    if non_empty_counts.empty:
+        raise InvalidDatasetException("The file does not contain data.")
+
+    # infer the approximate width of the actual table.
+    apparent_width = int(non_empty_counts.quantile(0.9))
+
+    minimum_required = max(
+        minimum_populated_cells,
+        math.ceil(apparent_width * minimum_populated_ratio),
+    )
+
+    for row_index in range(len(sample)):
+        populated_count = int(populated_counts.iloc[row_index])
+
+        if populated_count < minimum_required:
+            continue
+
+        next_row_index = _find_next_non_empty_row(
+            sample,
+            start=row_index + 1,
+        )
+
+        if next_row_index is None:
+            continue
+
+        return row_index
+
+    return None
+
+
+def _find_next_non_empty_row(
+    df: pd.DataFrame,
+    start,
+):
+    for row_index in range(start, len(df)):
+        if df.iloc[row_index].map(_has_value).any():
+            return row_index
+
+    return None
+
+
+def _has_value(value):
+    if value is None:
+        return False
+
+    if isinstance(value, str):
+        return bool(value.strip())
+
+    try:
+        return not bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return True
 
 
 def get_row_count_csv(upload_file: UploadFile):
@@ -87,6 +196,171 @@ def get_column_names_csv(upload_file: UploadFile):
             return "this file has no headers"
     except Exception as e:
         return f"an error occured {e}"
+
+
+class CsvReader(FileReader):
+    def _read_file(self, nrows=None):
+        try:
+            encoding = self._detect_encoding()
+            separator = self._detect_separator(encoding)
+
+            sample = pd.read_csv(
+                io.BytesIO(self.file_content),
+                encoding=encoding,
+                sep=separator,
+                header=None,
+                nrows=Config.HEADER_SCAN_ROWS,
+                engine="python",
+                dtype=object,
+                skip_blank_lines=False,
+            )
+
+            if sample.shape[1] > Config.MAX_DATAFRAME_COLS:
+                raise InvalidDatasetException(
+                    f"Dataset exceeds {Config.MAX_DATAFRAME_COLS:,} columns."
+                )
+
+            header_row = infer_simple_header_row(sample)
+
+            self.df = pd.read_csv(
+                io.BytesIO(self.file_content),
+                encoding=encoding,
+                sep=separator,
+                header=header_row,
+                nrows=self._read_limit(nrows),
+                engine="python",
+                skip_blank_lines=True,
+            )
+
+            self._validate_size_early(self.df)
+
+            return self.df
+
+        except InvalidDatasetException:
+            raise
+        except (
+            UnicodeDecodeError,
+            pd.errors.ParserError,
+            pd.errors.EmptyDataError,
+            csv.Error,
+            ValueError,
+        ):
+            raise FileReadException("Could not read CSV file")
+
+    def _detect_encoding(self):
+        sample = self.file_content[:100_000]
+
+        for encoding in (
+            "utf-8-sig",
+            "utf-8",
+            "cp1252",
+            "latin-1",
+        ):
+            try:
+                sample.decode(encoding)
+                return encoding
+            except UnicodeDecodeError:
+                continue
+
+        return "latin-1"
+
+    def _detect_separator(self, encoding):
+        text = self.file_content[:100_000].decode(
+            encoding,
+            errors="replace",
+        )
+
+        lines = [line for line in text.splitlines() if line.strip()]
+
+        if not lines:
+            raise InvalidDatasetException("The CSV contains no non-empty lines.")
+
+        sample_text = "\n".join(lines[:20])
+
+        try:
+            dialect = csv.Sniffer().sniff(
+                sample_text,
+                delimiters=Config.SUPPORTED_DELIMITERS,
+            )
+            return dialect.delimiter
+        except csv.Error:
+            return self._fallback_separator(lines)
+
+    @staticmethod
+    def _fallback_separator(lines):
+        """
+        Select the delimiter with the most consistent field count.
+        """
+        candidates = [",", ";", "\t", "|"]
+        best_separator = ","
+        best_score = (-1, -1)
+
+        for separator in candidates:
+            counts = [len(line.split(separator)) for line in lines[:20]]
+
+            multi_column_counts = [count for count in counts if count > 1]
+
+            if not multi_column_counts:
+                continue
+
+            most_common_count = max(
+                set(multi_column_counts),
+                key=multi_column_counts.count,
+            )
+
+            consistency = multi_column_counts.count(most_common_count)
+            field_count = most_common_count
+
+            score = (consistency, field_count)
+
+            if score > best_score:
+                best_score = score
+                best_separator = separator
+
+        return best_separator
+
+
+class XlsxReader(FileReader):
+    def _read_file(self, nrows=None):
+        try:
+            selected_sheet_name = 0  # currently only supports reading the first sheet
+
+            sample = pd.read_excel(
+                io.BytesIO(self.file_content),
+                sheet_name=selected_sheet_name,
+                header=None,
+                nrows=Config.HEADER_SCAN_ROWS,
+                engine="openpyxl",
+                dtype=object,
+            )
+
+            if sample.shape[1] > Config.MAX_DATAFRAME_COLS:
+                raise InvalidDatasetException(
+                    f"Dataset exceeds {Config.MAX_DATAFRAME_COLS} columns."
+                )
+
+            header_row = infer_simple_header_row(sample)
+
+            self.df = pd.read_excel(
+                io.BytesIO(self.file_content),
+                sheet_name=selected_sheet_name,
+                header=header_row,
+                nrows=self._read_limit(nrows),
+                engine="openpyxl",
+            )
+
+            self._validate_size_early(self.df)
+
+            return self.df
+
+        except InvalidDatasetException:
+            raise
+        except (
+            ValueError,
+            KeyError,
+            OSError,
+        ):
+            raise FileReadException("could not read xlsx file")
 
 
 def get_dataset_snippet(df: pd.DataFrame):

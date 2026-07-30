@@ -28,6 +28,8 @@ LLM_PROVIDER_LIST = literal_eval(LLM_PROVIDER_LIST)
 DEFAULT_TASK_COUNT = os.getenv("DEFAULT_TASK_COUNT")
 DEFAULT_TASK_COUNT = int(DEFAULT_TASK_COUNT)
 
+ACCEPTED_FILE_TYPES = ["csv", "xlsx"]
+
 model_list_google = [f"google:{i}" for i in LLM_MODEL_LIST_GOOGLE]
 model_list_cerebras = [f"cerebras:{i}" for i in LLM_MODEL_LIST_CEREBRAS]
 model_list_openrouter = [f"openrouter:{i}" for i in LLM_MODEL_LIST_OPENROUTER]
@@ -51,8 +53,9 @@ with first_req_tab:
         file = st.file_uploader(
             "Select your dataset file",
             accept_multiple_files=False,
-            type=["csv"],
+            type=ACCEPTED_FILE_TYPES,
             max_upload_size=50,
+            help="Accepts CSV and Excel files. For Excel files, the app will assume the dataset exists on the first sheet.",
         )
         model = st.selectbox(
             "Select model",

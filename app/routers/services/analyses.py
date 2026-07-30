@@ -26,6 +26,7 @@ from app.schemas.enums import (
 
 from app.services.dataset import (
     CsvReader,
+    XlsxReader,
     save_dataset_req_id,
     get_request_id_saved_dataset_dir,
 )
@@ -108,18 +109,27 @@ def build_run_info(
     )
 
 
-async def read_uploaded_csv(file: UploadFile):
+async def read_uploaded_file(file: UploadFile):
+    filename = file.filename
+
+    if filename.endswith(".csv"):
+        FileReader = CsvReader
+    elif filename.endswith(".xlsx"):
+        FileReader = XlsxReader
+
     try:
-        file_reader = CsvReader(upload_file=file)
+        file_reader = FileReader(upload_file=file)
         return await run_in_threadpool(file_reader.get_dataframe_dict)
 
     except FileReadException:
-        raise HTTPException(status_code=400, detail="invalid file format")
+        raise HTTPException(
+            status_code=400, detail="There is a problem with reading the file"
+        )
 
-    except InvalidDatasetException:
+    except InvalidDatasetException as e:
         raise HTTPException(
             status_code=400,
-            detail="dataset is too big or does not have header",
+            detail=str(e),
         )
 
 
@@ -157,7 +167,6 @@ def dispatch_task_chain(tasks):
 
 
 async def create_initial_analysis_run(
-    *,
     file: UploadFile,
     upload_dataset_data: UploadDatasetSchema,
     current_user,
@@ -182,7 +191,7 @@ async def create_initial_analysis_run(
         provider=provider,
     )
 
-    file_data = await read_uploaded_csv(file)
+    file_data = await read_uploaded_file(file)
 
     dataset_dataframe = file_data["dataframe"]
     dataset_filename = file_data["filename"]
@@ -263,7 +272,6 @@ async def create_initial_analysis_run(
 
 
 async def execute_existing_analysis_run(
-    *,
     request_id: str,
     execute_analyses_data: ExecuteAnalysesSchema,
     current_user,
@@ -354,7 +362,7 @@ async def execute_analysis_run_with_new_dataset(
 
     send_result_to_email = execute_analyses_data.send_result_to_email
 
-    file_data = await read_uploaded_csv(file)
+    file_data = await read_uploaded_file(file)
 
     dataset_dataframe = file_data["dataframe"]
     dataset_columns_str = file_data["columns_str"]
